@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#12110f">
+  <meta name="robots" content="noindex">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Garderob">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/assets/icon-192.png">
+  <title>Garderob — shaxsiy AI stilist</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect rx='16' width='64' height='64' fill='%2312110f'/%3E%3Ctext x='32' y='44' text-anchor='middle' font-size='36' fill='%23e4c59a' font-family='Georgia'%3EG%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <div id="progress"></div>
+  <div id="app">
+    <aside id="side"></aside>
+    <main>
+      <header id="topbar"></header>
+      <section id="view"><p class="boot">Garderob ochilmoqda…</p></section>
+    </main>
+  </div>
+  <nav id="tabbar"></nav>
+  <div id="toast" role="status"></div>
+  <div id="modal" class="modal hidden"></div>
+  <script src="/assets/app.js"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/service-worker.js").catch(function () {});
+    }
+  </script>
+</body>
+</html>
