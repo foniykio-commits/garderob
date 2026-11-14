@@ -634,7 +634,7 @@ async function startFit() {
   }
   try {
     const room = await import("/assets/fit.js");
-    if (token !== fitToken || state.view !== "fit") return;
+    if (token !== fitToken || state.view !== "home") return;
     const live = document.getElementById("fit-stage");
     if (!live) return;
     live.textContent = "";
