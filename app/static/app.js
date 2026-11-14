@@ -29,7 +29,7 @@ let toastTimer = null;
 const MONTHS = ["yanvar", "fevral", "mart", "aprel", "may", "iyun", "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"];
 const WEEK = ["Du", "Se", "Cho", "Pa", "Ju", "Sha", "Ya"];
 const TITLES = {
-  home: ["Atelye", "Bugun"],
+  home: ["Xona", "3D"],
   wardrobe: ["Kutubxona", "Garderob"],
   add: ["Yangi", "Kiyim qo'shish"],
   stylist: ["Maslahat", "AI stilist"],
@@ -237,25 +237,38 @@ function clothCard(item) {
   </button>`;
 }
 
+function railCards(slot, categories) {
+  const fit = ensureFitState();
+  const list = items.filter((item) => categories.includes(item.category));
+  if (!list.length) return `<p class="note">Bu turda kiyim yo'q.</p>`;
+  return `<div class="rail" data-slot="${slot}">${list.map((item) => `<button type="button" class="rail-card cloth${String(item.id) === String(fit[slot]) ? " on" : ""}" data-action="wear" data-slot="${slot}" data-id="${item.id}"><span class="cloth-photo">${photo(item)}</span><b>${esc(item.name)}</b></button>`).join("")}</div>`;
+}
+
+function dockHTML() {
+  const fit = ensureFitState();
+  const empty = items.length ? "" : `<button class="btn primary" data-action="nav" data-view="add" type="button">Kiyim qo'shish</button>`;
+  return `<div class="stage-sliders">
+      <label>Bo'y <b id="fit-height-label">${fit.height}</b><input id="fit-height" type="range" min="150" max="200" value="${fit.height}"></label>
+      <label>Vazn <b id="fit-weight-label">${fit.weight}</b><input id="fit-weight" type="range" min="40" max="140" value="${fit.weight}"></label>
+      <label>Teri<input id="fit-skin" type="range" min="0" max="5" step="1" value="${fit.skin}"></label>
+      <label class="face-btn">Yuz<input id="fit-face" hidden type="file" accept="image/*" capture="user"></label>
+    </div>
+    <div class="rail-switch">
+      <button class="chip on" type="button" data-action="show-rail" data-rail="top">Ustki</button>
+      <button class="chip" type="button" data-action="show-rail" data-rail="bottom">Shim</button>
+      <button class="chip" type="button" data-action="show-rail" data-rail="shoes">Oyoq</button>
+    </div>
+    <div class="rail-wrap" data-rail="top">${railCards("top", ["top", "outerwear", "dress"])}</div>
+    <div class="rail-wrap hidden" data-rail="bottom">${railCards("bottom", ["bottom"])}</div>
+    <div class="rail-wrap hidden" data-rail="shoes">${railCards("shoes", ["shoes"])}</div>
+    ${empty}`;
+}
+
 function viewHome() {
-  const today = state.today;
-  if (!today) return skeleton(2);
-  const weather = today.weather || {};
-  const temp = weather.temp == null ? "—" : `${Math.round(weather.temp)}°`;
-  const outfits = (today.outfits || []).map((outfit, index) => outfitCard(outfit, index > 0)).join("");
-  const forgotten = (today.forgotten || []).slice(0, 6).map(clothCard).join("");
-  const empty = today.total === 0
-    ? `<article class="card stack"><h2>Garderob bo'sh</h2><p>Rasmlarni qo'shing. Fon tozalanadi, rang va tur yoziladi, keyin stilist obraz tuzadi. Kutubxonada cheklov yo'q.</p><button class="btn primary" data-action="nav" data-view="add">Kiyim qo'shish</button></article>`
-    : outfits || `<article class="card"><p>${esc(today.reply)}</p></article>`;
-  const profileHint = profile.height_cm ? "" : `<button class="btn ghost" data-action="nav" data-view="profile">Bo'y va vaznni kiriting</button>`;
-  return `<div class="stack">
-    <section class="weather">
-      <div><p class="kicker">${esc(weather.city || profile.city || "Shahar")}</p><div class="temp">${temp}</div><p class="muted">${esc(weather.description || "")}</p></div>
-      <div>${profileHint}</div>
-    </section>
-    <p>${esc(today.reply || "")}</p>
-    ${empty}
-    ${forgotten ? `<div><div class="spread"><h2>Unutilganlar</h2><button class="btn ghost" data-action="nav" data-view="stats">Hammasi</button></div><div class="grid">${forgotten}</div></div>` : ""}
+  return `<div class="stage">
+    <button class="stage-more" data-action="more" type="button" aria-label="Menyu">⋯</button>
+    <div id="fit-stage" class="fit-stage"><p class="boot">3D xona ochilmoqda…</p></div>
+    <div class="stage-dock">${dockHTML()}</div>
   </div>`;
 }
 
@@ -456,8 +469,9 @@ function ensureFitState() {
   if (!state.fit) {
     state.fit = {
       height: Math.round(profile?.height_cm || 170),
-      body: 40,
+      weight: Math.round(profile?.weight_kg || 70),
       skin: 2,
+      face: "",
       top: "",
       bottom: "",
       shoes: "",
@@ -471,29 +485,17 @@ function fitPayload() {
   const top = items.find((item) => String(item.id) === String(fit.top));
   const bottom = items.find((item) => String(item.id) === String(fit.bottom));
   const shoe = items.find((item) => String(item.id) === String(fit.shoes));
+  const weight = Number(fit.weight) || 70;
   return {
     height: fit.height,
-    body: fit.body,
+    body: Math.round(Math.max(0, Math.min(100, ((weight - 45) / 90) * 100))),
     skin: fit.skin,
+    faceUrl: fit.face || "",
     topUrl: top?.image_url || "",
     bottomUrl: bottom?.image_url || "",
     shoeUrl: shoe?.image_url || "",
     dress: top?.category === "dress",
   };
-}
-
-function viewFit() {
-  const fit = ensureFitState();
-  return `<div class="stack">
-    <div id="fit-stage" class="fit-stage"><p class="boot">3D maket yuklanmoqda…</p></div>
-    <p class="note">Barmoq bilan 360° aylantiring, ikki barmoq bilan yaqinlashtiring. Three.js faqat shu sahifada yuklanadi.</p>
-    <label class="lbl">Bo'y, <span id="fit-height-label">${fit.height}</span> sm<input id="fit-height" type="range" min="150" max="200" value="${fit.height}"></label>
-    <label class="lbl">Tana: <span id="fit-body-label">${bodyWord(fit.body)}</span><input id="fit-body" type="range" min="0" max="100" value="${fit.body}"></label>
-    <label class="lbl">Teri rangi<input id="fit-skin" type="range" min="0" max="5" step="1" value="${fit.skin}"></label>
-    <label class="lbl">Ustki kiyim<select id="fit-top" class="field">${clothChoices(["top", "outerwear", "dress"], fit.top)}</select></label>
-    <label class="lbl">Pastki kiyim<select id="fit-bottom" class="field">${clothChoices(["bottom"], fit.bottom)}</select></label>
-    <label class="lbl">Oyoq kiyim<select id="fit-shoes" class="field">${clothChoices(["shoes"], fit.shoes)}</select></label>
-  </div>`;
 }
 
 const views = {
@@ -505,16 +507,14 @@ const views = {
   shop: viewShop,
   stats: viewStats,
   profile: viewProfile,
-  fit: viewFit,
 };
 
 function sideHTML() {
   const links = [
-    ["home", "Bugun"],
+    ["home", "3D xona"],
     ["wardrobe", "Garderob"],
     ["add", "Qo'shish"],
     ["stylist", "Stilist"],
-    ["fit", "3D Maket"],
     ["calendar", "Taqvim"],
     ["shop", "Xarid"],
     ["stats", "Statistika"],
@@ -524,7 +524,7 @@ function sideHTML() {
 }
 
 function tabHTML() {
-  const tabs = [["home", "Bugun", "☀"], ["wardrobe", "Kiyim", "▣"], ["stylist", "Stilist", "✎"], ["calendar", "Taqvim", "▦"], ["more", "Yana", "⋯"]];
+  const tabs = [["home", "3D", "◎"], ["wardrobe", "Kiyim", "▣"], ["stylist", "Stilist", "✎"], ["calendar", "Taqvim", "▦"], ["more", "Yana", "⋯"]];
   return tabs.map(([view, label, icon]) => `<button class="nav-btn${tabFor(state.view) === view ? " active" : ""}" data-action="${view === "more" ? "more" : "nav"}" data-view="${view}" data-nav="${view}"><strong>${icon}</strong>${label}</button>`).join("");
 }
 
@@ -569,45 +569,82 @@ async function startFit() {
 function syncFit() {
   const fit = ensureFitState();
   const height = document.getElementById("fit-height");
-  const body = document.getElementById("fit-body");
+  const weight = document.getElementById("fit-weight");
   const skin = document.getElementById("fit-skin");
-  const top = document.getElementById("fit-top");
-  const bottom = document.getElementById("fit-bottom");
-  const shoes = document.getElementById("fit-shoes");
   if (height) fit.height = Number(height.value);
-  if (body) fit.body = Number(body.value);
+  if (weight) fit.weight = Number(weight.value);
   if (skin) fit.skin = Number(skin.value);
-  if (top) fit.top = top.value;
-  if (bottom) fit.bottom = bottom.value;
-  if (shoes) fit.shoes = shoes.value;
   const heightLabel = document.getElementById("fit-height-label");
-  const bodyLabel = document.getElementById("fit-body-label");
+  const weightLabel = document.getElementById("fit-weight-label");
   if (heightLabel) heightLabel.textContent = String(fit.height);
-  if (bodyLabel) bodyLabel.textContent = bodyWord(fit.body);
+  if (weightLabel) weightLabel.textContent = String(fit.weight);
   fitApi?.update(fitPayload());
 }
 
+function bindRails() {
+  document.querySelectorAll(".rail").forEach((rail) => {
+    if (rail.dataset.bound) return;
+    rail.dataset.bound = "1";
+    let timer = 0;
+    rail.addEventListener("scroll", () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const cards = [...rail.querySelectorAll(".rail-card")];
+        if (!cards.length) return;
+        const mid = rail.getBoundingClientRect().left + rail.clientWidth / 2;
+        let best = cards[0];
+        let dist = Infinity;
+        for (const card of cards) {
+          const box = card.getBoundingClientRect();
+          const gap = Math.abs(box.left + box.width / 2 - mid);
+          if (gap < dist) {
+            dist = gap;
+            best = card;
+          }
+        }
+        const fit = ensureFitState();
+        if (String(fit[best.dataset.slot]) === String(best.dataset.id)) return;
+        fit[best.dataset.slot] = best.dataset.id;
+        rail.querySelectorAll(".rail-card").forEach((card) => card.classList.toggle("on", card === best));
+        fitApi?.update(fitPayload());
+      }, 90);
+    }, { passive: true });
+  });
+}
+
 function render() {
-  if (state.view !== "fit") stopFit();
+  document.body.classList.toggle("on-stage", state.view === "home");
+  if (state.view !== "home") stopFit();
+  const keepStage = state.view === "home" && document.querySelector("#fit-stage canvas");
+  if (keepStage) {
+    const dock = document.querySelector(".stage-dock");
+    if (dock) dock.innerHTML = dockHTML();
+    renderShell();
+    bindRails();
+    fitApi?.update(fitPayload());
+    return;
+  }
   const [kicker, title] = TITLES[state.view] || ["", ""];
   document.getElementById("topbar").innerHTML = `<div><p class="kicker">${kicker}</p><h1>${title}</h1></div>`;
   document.getElementById("view").innerHTML = views[state.view]();
   renderShell();
   const thread = document.getElementById("thread");
   if (thread) thread.scrollTop = thread.scrollHeight;
-  if (state.view === "fit") startFit();
+  if (state.view === "home") {
+    startFit();
+    bindRails();
+  }
 }
 
 async function go(view) {
   state.view = view;
   localStorage.setItem("garderob-view", view);
-  const cold = (view === "home" && !state.today) || (view === "stats" && !state.stats) || (view === "stylist" && !state.historyLoaded && !state.history.length);
+  const cold = (view === "stats" && !state.stats) || (view === "stylist" && !state.historyLoaded && !state.history.length);
   if (cold) {
     state.loading = true;
     render();
   }
   try {
-    if (view === "home") state.today = await api("/api/today");
     if (view === "stats") state.stats = await api("/api/stats");
     if (view === "calendar") await loadCalendar();
     if (view === "stylist" && !state.historyLoaded) {
@@ -703,7 +740,6 @@ async function saveLook(button) {
   });
   await refreshItems();
   toast("Bugungi taqvimga yozildi");
-  if (state.view === "home") state.today = await api("/api/today");
   render();
 }
 
@@ -756,15 +792,14 @@ async function boot() {
     render();
   }
   [meta, profile, items] = await Promise.all([api("/api/meta"), api("/api/profile"), api("/api/items")]);
-  const saved = localStorage.getItem("garderob-view");
-  await go(views[saved] ? saved : "home");
+  await go("home");
 }
 
 document.body.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button || state.busy) return;
   const action = button.dataset.action;
-  const instant = new Set(["more", "close-modal", "open-item", "set-cat", "toggle-forgotten", "remove-pending", "pick-day", "toggle-pick"]);
+  const instant = new Set(["more", "close-modal", "open-item", "set-cat", "toggle-forgotten", "remove-pending", "pick-day", "toggle-pick", "wear", "show-rail"]);
   if (!instant.has(action)) lockUi(button);
   try {
     if (action === "nav") {
@@ -775,13 +810,24 @@ document.body.addEventListener("click", async (event) => {
       openModal(`<div class="stack">
         <div class="spread"><h2>Yana</h2><button class="icon-btn" data-action="close-modal">×</button></div>
         <button class="btn" data-action="nav" data-view="add">Kiyim qo'shish</button>
-        <button class="btn" data-action="nav" data-view="fit">3D Maket</button>
+        <button class="btn" data-action="nav" data-view="wardrobe">Garderob</button>
+        <button class="btn" data-action="nav" data-view="stylist">Stilist</button>
+        <button class="btn" data-action="nav" data-view="calendar">Taqvim</button>
         <button class="btn" data-action="nav" data-view="shop">Xarid maslahati</button>
         <button class="btn" data-action="nav" data-view="stats">Statistika</button>
         <button class="btn" data-action="nav" data-view="profile">Profil</button>
       </div>`);
     } else if (action === "close-modal") closeModal();
-    else if (action === "open-item") openItem(button.dataset.id);
+    else if (action === "show-rail") {
+      document.querySelectorAll(".rail-wrap").forEach((node) => node.classList.toggle("hidden", node.dataset.rail !== button.dataset.rail));
+      document.querySelectorAll("[data-action='show-rail']").forEach((node) => node.classList.toggle("on", node.dataset.rail === button.dataset.rail));
+    } else if (action === "wear") {
+      const fit = ensureFitState();
+      const slot = button.dataset.slot;
+      fit[slot] = String(fit[slot]) === String(button.dataset.id) ? "" : button.dataset.id;
+      button.parentElement?.querySelectorAll(".rail-card").forEach((card) => card.classList.toggle("on", String(card.dataset.id) === String(fit[slot])));
+      fitApi?.update(fitPayload());
+    } else if (action === "open-item") openItem(button.dataset.id);
     else if (action === "save-item") await saveItem(button.dataset.id);
     else if (action === "delete-item") {
       if (!confirm("Bu kiyim o'chirilsinmi?")) return;
@@ -971,6 +1017,17 @@ document.body.addEventListener("change", async (event) => {
   } else if (target.id === "edit-cat") {
     const select = document.getElementById("edit-sub");
     select.innerHTML = subtypeOptions(target.value, "");
+  } else if (target.id === "fit-face") {
+    const file = target.files?.[0];
+    if (file) {
+      const small = await shrinkFile(file);
+      const reader = new FileReader();
+      reader.onload = () => {
+        ensureFitState().face = String(reader.result || "");
+        fitApi?.update(fitPayload());
+      };
+      reader.readAsDataURL(small);
+    }
   } else if (target.id && target.id.startsWith("fit-")) {
     syncFit();
   } else if (target.id === "search") {

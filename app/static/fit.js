@@ -29,7 +29,7 @@ export function mount(container, initial) {
   scene.background = new THREE.Color("#171410");
   const camera = new THREE.PerspectiveCamera(32, width / height, 0.1, 30);
   const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
   renderer.setSize(width, height);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);
@@ -43,7 +43,7 @@ export function mount(container, initial) {
   scene.add(rim);
 
   const floor = new THREE.Mesh(
-    new THREE.CircleGeometry(0.72, 32),
+    new THREE.CircleGeometry(0.72, 16),
     new THREE.MeshStandardMaterial({ color: "#0c0b09", roughness: 1 })
   );
   floor.rotation.x = -Math.PI / 2;
@@ -62,30 +62,32 @@ export function mount(container, initial) {
   pants.userData.mats = [pantsMat];
   shoes.userData.mats = [shoeMat];
 
-  const head = part(new THREE.SphereGeometry(0.13, 18, 14), skin, 0, 1.58, 0);
-  const neck = part(new THREE.CylinderGeometry(0.045, 0.05, 0.08, 12), skin, 0, 1.44, 0);
-  const torso = part(new THREE.CylinderGeometry(0.16, 0.15, 0.42, 16), skin, 0, 1.18, 0);
-  const hip = part(new THREE.CylinderGeometry(0.15, 0.14, 0.16, 16), skin, 0, 0.9, 0);
-  const armGeo = new THREE.CylinderGeometry(0.045, 0.04, 0.48, 12);
+  const head = part(new THREE.SphereGeometry(0.13, 12, 8), skin, 0, 1.58, 0);
+  head.material = skin.clone();
+  head.rotation.y = Math.PI;
+  const neck = part(new THREE.CylinderGeometry(0.045, 0.05, 0.08, 8), skin, 0, 1.44, 0);
+  const torso = part(new THREE.CylinderGeometry(0.16, 0.15, 0.42, 8), skin, 0, 1.18, 0);
+  const hip = part(new THREE.CylinderGeometry(0.15, 0.14, 0.16, 8), skin, 0, 0.9, 0);
+  const armGeo = new THREE.CylinderGeometry(0.045, 0.04, 0.48, 8);
   const armL = part(armGeo, skin, -0.24, 1.16, 0);
   const armR = part(armGeo, skin, 0.24, 1.16, 0);
-  const thighGeo = new THREE.CylinderGeometry(0.075, 0.06, 0.4, 12);
-  const calfGeo = new THREE.CylinderGeometry(0.055, 0.045, 0.36, 12);
+  const thighGeo = new THREE.CylinderGeometry(0.075, 0.06, 0.4, 8);
+  const calfGeo = new THREE.CylinderGeometry(0.055, 0.045, 0.36, 8);
   const thighL = part(thighGeo, skin, -0.09, 0.62, 0);
   const thighR = part(thighGeo, skin, 0.09, 0.62, 0);
   const calfL = part(calfGeo, skin, -0.09, 0.24, 0);
   const calfR = part(calfGeo, skin, 0.09, 0.24, 0);
   figure.add(head, neck, torso, hip, armL, armR, thighL, thighR, calfL, calfR);
 
-  const shirtTorso = part(new THREE.CylinderGeometry(0.175, 0.165, 0.44, 16), shirtMat, 0, 1.18, 0);
-  const sleeveGeo = new THREE.CylinderGeometry(0.055, 0.05, 0.34, 12);
+  const shirtTorso = part(new THREE.CylinderGeometry(0.185, 0.172, 0.46, 8), shirtMat, 0, 1.18, 0.02);
+  const sleeveGeo = new THREE.CylinderGeometry(0.06, 0.052, 0.34, 8);
   const sleeveL = part(sleeveGeo, shirtMat, -0.25, 1.22, 0);
   const sleeveR = part(sleeveGeo, shirtMat, 0.25, 1.22, 0);
   shirt.add(shirtTorso, sleeveL, sleeveR);
 
-  const pantsHip = part(new THREE.CylinderGeometry(0.165, 0.15, 0.18, 16), pantsMat, 0, 0.9, 0);
-  const pantsThighGeo = new THREE.CylinderGeometry(0.09, 0.072, 0.4, 12);
-  const pantsCalfGeo = new THREE.CylinderGeometry(0.068, 0.055, 0.34, 12);
+  const pantsHip = part(new THREE.CylinderGeometry(0.175, 0.16, 0.2, 8), pantsMat, 0, 0.9, 0.02);
+  const pantsThighGeo = new THREE.CylinderGeometry(0.098, 0.078, 0.42, 8);
+  const pantsCalfGeo = new THREE.CylinderGeometry(0.074, 0.06, 0.36, 8);
   const pantsThighL = part(pantsThighGeo, pantsMat, -0.09, 0.62, 0.01);
   const pantsThighR = part(pantsThighGeo, pantsMat, 0.09, 0.62, 0.01);
   const pantsCalfL = part(pantsCalfGeo, pantsMat, -0.09, 0.26, 0.01);
@@ -124,7 +126,34 @@ export function mount(container, initial) {
     const tall = (Number(next.height) || 170) / 170;
     figure.scale.set(1, tall, 1);
     for (const mesh of shaped) mesh.scale.set(width, 1, depth);
-    skin.color.set(SKINS[Number(next.skin)] || SKINS[2]);
+    const tone = SKINS[Number(next.skin)] || SKINS[2];
+    skin.color.set(tone);
+    if (!head.material.map) head.material.color.set(tone);
+  }
+
+  let faceUrl = "";
+  function applyFace(url) {
+    const nextUrl = url || "";
+    if (nextUrl === faceUrl) return;
+    faceUrl = nextUrl;
+    if (!faceUrl) {
+      if (head.material.map) head.material.map.dispose();
+      head.material.map = null;
+      head.material.color.copy(skin.color);
+      head.material.needsUpdate = true;
+      return;
+    }
+    loader.load(faceUrl, (texture) => {
+      if (stopped || faceUrl !== nextUrl) {
+        texture.dispose();
+        return;
+      }
+      texture.colorSpace = THREE.SRGBColorSpace;
+      if (head.material.map) head.material.map.dispose();
+      head.material.map = texture;
+      head.material.color.set("#ffffff");
+      head.material.needsUpdate = true;
+    });
   }
 
   function wear(group, url) {
@@ -142,7 +171,7 @@ export function mount(container, initial) {
         return;
       }
       texture.colorSpace = THREE.SRGBColorSpace;
-      texture.anisotropy = 4;
+      texture.anisotropy = 1;
       for (const material of group.userData.mats) {
         if (material.map) material.map.dispose();
         material.map = texture;
@@ -228,12 +257,14 @@ export function mount(container, initial) {
   observer.observe(container);
 
   applyShape(initial);
+  applyFace(initial.faceUrl || "");
   applyClothes(initial);
   animate();
 
   return {
     update(next) {
       applyShape(next);
+      applyFace(next.faceUrl || "");
       applyClothes(next);
     },
     dispose() {
