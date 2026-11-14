@@ -451,12 +451,17 @@ export function mount(container, initial) {
   }
 
   function applyHair(style, color) {
+    hairMat.color.set(color || "#1a120e");
+    if (modelHasHair) {
+      shownHair = "";
+      for (const group of Object.values(hairStyles)) group.visible = false;
+      return;
+    }
     const name = hairStyles[style] ? style : "short";
     if (name !== shownHair) {
       shownHair = name;
       for (const [key, group] of Object.entries(hairStyles)) group.visible = key === name;
     }
-    hairMat.color.set(color || "#1a120e");
   }
 
   function applyGlasses(kind) {
@@ -685,56 +690,95 @@ export function mount(container, initial) {
   });
   observer.observe(container);
 
-  gltfLoader.load(
-    MODEL_URL,
-    (gltf) => {
-      if (stopped) return;
-      let mesh = null;
-      gltf.scene.traverse((object) => {
-        if (object.isSkinnedMesh && !mesh) mesh = object;
-      });
-      if (!mesh) return;
-      mesh.geometry.computeBoundingBox();
-      const box = mesh.geometry.boundingBox;
-      bodyState.foot = box.min.y;
-      bodyState.span = Math.max(0.4, box.max.y - box.min.y);
-      modelSpan = bodyState.span;
-      const span = uniform("uSpan");
-      const foot = uniform("uFoot");
-      if (span) span.value = bodyState.span;
-      if (foot) foot.value = bodyState.foot;
-      gltf.scene.traverse((object) => {
-        if (!object.isMesh) return;
-        object.castShadow = true;
-        object.receiveShadow = true;
-        object.frustumCulled = false;
-        const materials = [].concat(object.material);
-        for (const material of materials) {
-          if (material.name === "Face" || material.name === "Shirt" || material.name === "Pants") paintSurface(object.geometry);
-          if (material.name === "Skin") outfit.skinTone = material;
-          if (material.name === "Face") outfit.face = material;
-          if (material.name === "Shirt") outfit.shirt = material;
-          if (material.name === "Pants") outfit.pants = material;
+  let loadedScene = null;
+  let modelHasHair = false;
+  let modelUrl = initial.modelUrl || MODEL_URL;
+
+  function dropScene(target) {
+    const shared = new Set(Object.values(maps).filter(Boolean));
+    target.traverse((object) => {
+      if (!object.isMesh) return;
+      object.geometry?.dispose();
+      const materials = [].concat(object.material || []);
+      for (const material of materials) {
+        if (material.map && !shared.has(material.map)) material.map.dispose?.();
+        material.dispose?.();
+      }
+    });
+  }
+
+  function loadAvatar(url) {
+    modelUrl = url || MODEL_URL;
+    gltfLoader.load(
+      modelUrl,
+      (gltf) => {
+        if (stopped) return;
+        let mesh = null;
+        gltf.scene.traverse((object) => {
+          if (object.isSkinnedMesh && !mesh) mesh = object;
+        });
+        if (!mesh) return;
+        if (loadedScene) {
+          figure.remove(loadedScene);
+          dropScene(loadedScene);
         }
-      });
-      if (outfit.skinTone) outfit.skinTone.color.set(SKINS[initial.skin] || SKINS[2]);
-      if (outfit.face) outfit.face.color.set(SKINS[initial.skin] || SKINS[2]);
-      if (outfit.shirt) outfit.shirt.color.set("#6d4c7d");
-      if (outfit.pants) outfit.pants.color.set("#2c3440");
-      figure.add(gltf.scene);
-      skeleton = mesh.skeleton;
-      for (const bone of skeleton.bones) bone.userData.rest = bone.quaternion.clone();
-      headBone = skeleton.bones.find((bone) => bone.name === "Head" || bone.name === "head") || null;
-      mixer = new THREE.AnimationMixer(gltf.scene);
-      playPose.clips = gltf.animations;
-      ready = true;
-      apply(pending);
-    },
-    undefined,
-    () => {
-      if (!stopped) container.insertAdjacentHTML("beforeend", `<p class="boot">3D tana yuklanmadi. Internetni tekshiring.</p>`);
-    }
-  );
+        outfit.skinTone = null;
+        outfit.face = null;
+        outfit.shirt = null;
+        outfit.pants = null;
+        modelHasHair = false;
+        mesh.geometry.computeBoundingBox();
+        const box = mesh.geometry.boundingBox;
+        bodyState.foot = box.min.y;
+        bodyState.span = Math.max(0.4, box.max.y - box.min.y);
+        modelSpan = bodyState.span;
+        const span = uniform("uSpan");
+        const foot = uniform("uFoot");
+        if (span) span.value = bodyState.span;
+        if (foot) foot.value = bodyState.foot;
+        gltf.scene.traverse((object) => {
+          if (!object.isMesh) return;
+          object.castShadow = true;
+          object.receiveShadow = true;
+          object.frustumCulled = false;
+          const materials = [].concat(object.material);
+          for (const material of materials) {
+            material.metalness = 0;
+            if (material.name === "Skin" || material.name === "Face") material.roughness = 0.4;
+            if (material.name === "Face" || material.name === "Shirt" || material.name === "Pants" || material.name === "Black") paintSurface(object.geometry);
+            if (material.name === "Skin") outfit.skinTone = material;
+            if (material.name === "Face") outfit.face = material;
+            if (material.name === "Shirt") outfit.shirt = material;
+            if (material.name === "Pants" || (material.name === "Black" && !outfit.pants)) outfit.pants = material;
+            if (material.name === "Hair") modelHasHair = true;
+          }
+        });
+        if (outfit.skinTone) outfit.skinTone.color.set(SKINS[pending.skin] || SKINS[2]);
+        if (outfit.face) outfit.face.color.set(SKINS[pending.skin] || SKINS[2]);
+        if (outfit.shirt && !outfit.shirt.map) outfit.shirt.color.set("#6d4c7d");
+        if (outfit.pants && !outfit.pants.map) outfit.pants.color.set("#2c3440");
+        figure.add(gltf.scene);
+        loadedScene = gltf.scene;
+        skeleton = mesh.skeleton;
+        for (const bone of skeleton.bones) bone.userData.rest = bone.quaternion.clone();
+        headBone = skeleton.bones.find((bone) => bone.name === "Head" || bone.name === "head") || null;
+        if (currentAction) currentAction.stop();
+        currentAction = null;
+        shownPose = "";
+        mixer = new THREE.AnimationMixer(gltf.scene);
+        playPose.clips = gltf.animations;
+        ready = true;
+        shownHair = "";
+        apply(pending);
+      },
+      undefined,
+      () => {
+        if (!stopped && !loadedScene) container.insertAdjacentHTML("beforeend", `<p class="boot">3D tana yuklanmadi. Internetni tekshiring.</p>`);
+      }
+    );
+  }
+
+  loadAvatar(modelUrl);
 
   applyHair(initial.hair, initial.hairColor);
   animate();
@@ -808,6 +852,10 @@ export function mount(container, initial) {
   return {
     update(next) {
       apply(next);
+    },
+    useAvatar(url) {
+      if (!url || url === modelUrl) return;
+      loadAvatar(url);
     },
     projections,
     dispose() {

@@ -619,18 +619,21 @@ function dockHTML() {
       <div class="galaxy-cats">${styleCats}</div>
       ${styleRails}
     </div>
-    <div class="dock-controls">
-      <div class="stage-sliders">
-        <label>Bo'y <b id="fit-height-label">${fit.height}</b><input id="fit-height" type="range" min="150" max="200" value="${fit.height}"></label>
-        <label>Vazn <b id="fit-weight-label">${fit.weight}</b><input id="fit-weight" type="range" min="40" max="140" value="${fit.weight}"></label>
-      </div>
-    </div>`;
+    `;
 }
+
+const AVATARS = [
+  { id: "bald", name: "Sodda", url: "/assets/models/avatar.glb" },
+  { id: "woman", name: "Ayol", url: "/assets/models/casual-female.glb" },
+  { id: "man", name: "Erkak", url: "/assets/models/casual-male.glb" },
+  { id: "suit", name: "Kostyum", url: "/assets/models/suit-male.glb" },
+  { id: "worker", name: "Ishchi", url: "/assets/models/worker-female.glb" },
+];
 
 function viewHome() {
   return `<div class="stage">
+    <button class="avatar-add" data-action="open-avatar-picker" type="button">Avatar qo'shish</button>
     <button class="stage-more" data-action="more" type="button" aria-label="Menyu">⋯</button>
-    <p id="stage-advice" class="stage-advice"></p>
     <div id="fit-stage" class="fit-stage"><p class="boot">3D xona ochilmoqda…</p></div>
     <div class="stage-dock">${dockHTML()}</div>
   </div>`;
@@ -847,6 +850,7 @@ function ensureFitState() {
       hat: "none",
       beard: "none",
       extra: "",
+      avatar: "bald",
       drapeTop: "",
       drapeBottom: "",
       shoulder: 1,
@@ -862,6 +866,7 @@ function ensureFitState() {
   state.fit.hat = state.fit.hat || "none";
   state.fit.beard = state.fit.beard || "none";
   if (!state.fit.extra) state.fit.extra = "";
+  state.fit.avatar = state.fit.avatar || "bald";
   state.fit.drapeTop = state.fit.drapeTop || "";
   state.fit.drapeBottom = state.fit.drapeBottom || "";
   if (!state.fit.shoulder) state.fit.shoulder = 1;
@@ -913,6 +918,7 @@ function fitPayload() {
     hairColor: fit.hairColor,
     pose: fit.pose || "rest",
     glasses: fit.glasses || "none",
+    modelUrl: AVATARS.find((row) => row.id === fit.avatar)?.url || AVATARS[0].url,
     hat: fit.hat || "none",
     beard: fit.beard || "none",
     topUrl: fit.drapeTop || top?.image_url || "",
@@ -1227,14 +1233,28 @@ document.body.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button || state.busy) return;
   const action = button.dataset.action;
-  const instant = new Set(["more", "close-modal", "open-item", "set-cat", "toggle-forgotten", "remove-pending", "pick-day", "toggle-pick", "wear", "show-rail", "set-hair", "set-hair-color", "set-pose", "set-dock", "set-look", "set-glasses", "set-skin", "set-hat", "set-beard"]);
+  const instant = new Set(["more", "close-modal", "open-item", "set-cat", "toggle-forgotten", "remove-pending", "pick-day", "toggle-pick", "wear", "show-rail", "set-hair", "set-hair-color", "set-pose", "set-dock", "set-look", "set-glasses", "set-skin", "set-hat", "set-beard", "open-avatar-picker", "choose-avatar"]);
   if (!instant.has(action)) lockUi(button);
   try {
     if (action === "nav") {
       closeModal();
       await go(button.dataset.view);
     }
-    else if (action === "more") {
+    else if (action === "open-avatar-picker") {
+      const fit = ensureFitState();
+      const cards = AVATARS.map((row) => `<button type="button" class="circle-pick${fit.avatar === row.id ? " on" : ""}" data-action="choose-avatar" data-avatar="${row.id}"><span class="circle-cell">${mark("face")}</span><span class="circle-label">${row.name}</span></button>`).join("");
+      openModal(`<div class="stack">
+        <div class="spread"><h2>Avatar qo'shish</h2><button class="icon-btn" data-action="close-modal">×</button></div>
+        <p class="note">Tayyor inson nusxalaridan birini tanlang. Yuz rasmi va kiyim shu avatarga o'tadi.</p>
+        <div class="circle-rail">${cards}</div>
+      </div>`);
+    } else if (action === "choose-avatar") {
+      const fit = ensureFitState();
+      const chosen = AVATARS.find((row) => row.id === button.dataset.avatar) || AVATARS[0];
+      fit.avatar = chosen.id;
+      fitApi?.useAvatar(chosen.url);
+      closeModal();
+    } else if (action === "more") {
       openModal(`<div class="stack">
         <div class="spread"><h2>Yana</h2><button class="icon-btn" data-action="close-modal">×</button></div>
         <button class="btn" data-action="nav" data-view="add">Kiyim qo'shish</button>
