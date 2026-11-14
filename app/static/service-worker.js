@@ -1,4 +1,4 @@
-const CACHE = "garderob-v2";
+const CACHE = "garderob-v3";
 const SHELL = ["/", "/assets/styles.css", "/assets/app.js", "/manifest.webmanifest", "/assets/icon-192.png", "/assets/icon-512.png"];
 
 self.addEventListener("install", (event) => {

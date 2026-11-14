@@ -210,7 +210,7 @@ function viewAdd() {
       <label class="lbl">Turkum<select id="add-cat" class="field">${optionTags(meta.categories, state.addCategory)}</select></label>
       <label class="lbl">Turi<select id="add-sub" class="field">${subtypeOptions(state.addCategory, state.addSubtype)}</select></label>
       <div class="checks">${seasons}</div>
-      ${meta.storage === "cloudinary" ? `<p class="note">Rasmlar Cloudinary bulutida saqlanadi. Telefondan ham shu havola bilan ochiladi.</p>` : `<p class="note">Hozir rasmlar shu serverda saqlanadi. Cloudinary kaliti qo'yilsa, bulutga o'tadi.</p>`}
+      ${meta.storage === "cloudinary" ? `<p class="note">Rasmlar Cloudinary bulutida saqlanadi. Telefondan ham shu havola bilan ochiladi.</p>` : ""}
       ${meta.bg_removal === "fast" ? `<p class="note">Fon tez usulda tozalanadi. Murakkab fon uchun: pip install rembg</p>` : `<p class="note">rembg yoqilgan — fon aniqroq olib tashlanadi.</p>`}
       <button class="btn primary" type="submit" ${state.pending.length ? "" : "disabled"}>Garderobga saqlash</button>
     </div>

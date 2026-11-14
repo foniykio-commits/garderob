@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import JSON, Date, DateTime, Float, Integer, String, Text
+from sqlalchemy import JSON, Date, DateTime, Float, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .database import Base
@@ -51,6 +51,17 @@ class WearEntry(Base):
     item_ids: Mapped[list] = mapped_column(JSON, default=list)
     occasion: Mapped[str] = mapped_column(String(32), default="kundalik")
     note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class ImageBlob(Base):
+    """Kiyim rasmi. Server qayta ishga tushsa ham Postgres (yoki lokal SQLite) da qoladi."""
+
+    __tablename__ = "image_blobs"
+
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    data: Mapped[bytes] = mapped_column(LargeBinary)
+    mime: Mapped[str] = mapped_column(String(40), default="image/webp")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
 
 

@@ -2,16 +2,16 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from .config import INBOX_DIR, ITEMS_DIR, ROOT, UPLOAD_DIR, USING_POSTGRES
+from .config import INBOX_DIR, ITEMS_DIR, ROOT, USING_POSTGRES
 from .constants import meta_dict
 from .database import Base, engine, ensure_schema
 from .routers import items, planner, profile, shop, stylist
 from .services.images import rembg_available
-from .services.storage import cloudinary_enabled
+from .services.storage import cleanup_stored_inbox, cloudinary_enabled, get_blob
 
 logger = logging.getLogger("garderob")
 STATIC_DIR = ROOT / "app" / "static"
@@ -22,6 +22,12 @@ def _prepare_dirs() -> None:
     INBOX_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def image_backend() -> str:
+    if cloudinary_enabled():
+        return "cloudinary"
+    return "database"
+
+
 def cleanup_inbox(max_age_hours: int = 48) -> None:
     cutoff = time.time() - max_age_hours * 3600
     for path in INBOX_DIR.glob("*.png"):
@@ -30,6 +36,10 @@ def cleanup_inbox(max_age_hours: int = 48) -> None:
                 path.unlink()
         except OSError:
             logger.warning("Eski rasm o'chirilmadi: %s", path.name)
+    try:
+        cleanup_stored_inbox(max_age_hours)
+    except Exception:
+        logger.warning("Bazadagi eski rasmlar tozalanmadi", exc_info=True)
 
 
 @asynccontextmanager
@@ -56,7 +66,7 @@ def health():
         "ok": True,
         "app": "garderob",
         "database": "postgres" if USING_POSTGRES else "sqlite",
-        "images": "cloudinary" if cloudinary_enabled() else "local",
+        "images": image_backend(),
     }
 
 
@@ -64,7 +74,7 @@ def health():
 def meta():
     payload = meta_dict()
     payload["bg_removal"] = "rembg" if rembg_available() else "fast"
-    payload["storage"] = "cloudinary" if cloudinary_enabled() else "local"
+    payload["storage"] = image_backend()
     payload["database"] = "postgres" if USING_POSTGRES else "sqlite"
     return payload
 
@@ -88,5 +98,21 @@ def manifest():
     return FileResponse(STATIC_DIR / "manifest.webmanifest", media_type="application/manifest+json")
 
 
-app.mount("/media", StaticFiles(directory=str(UPLOAD_DIR)), name="media")
+@app.get("/media/{folder}/{name}")
+def media_file(folder: str, name: str):
+    if folder not in {"items", "inbox"}:
+        raise HTTPException(404, "Rasm topilmadi.")
+    blob = get_blob(folder, name)
+    if blob is not None:
+        return Response(
+            content=bytes(blob.data),
+            media_type=blob.mime or "image/webp",
+            headers={"Cache-Control": "private, max-age=86400"},
+        )
+    path = (ITEMS_DIR if folder == "items" else INBOX_DIR) / name
+    if path.is_file():
+        return FileResponse(path)
+    raise HTTPException(404, "Rasm topilmadi.")
+
+
 app.mount("/assets", StaticFiles(directory=str(STATIC_DIR)), name="assets")
