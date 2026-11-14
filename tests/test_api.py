@@ -132,3 +132,22 @@ def test_personal_flow_has_no_library_cap(client):
     left = client.get("/api/items").json()
     assert all(item["id"] != shoes["id"] for item in left)
     assert len(left) == 3
+
+
+def test_body_measurements_follow_height_and_bmi(client):
+    reference = client.get("/api/body", params={"height_cm": 175, "weight_kg": 70})
+    assert reference.status_code == 200, reference.text
+    body = reference.json()
+    assert body["bmi"] == pytest.approx(22.86, abs=0.05)
+    assert body["girths_cm"]["chest"] == pytest.approx(96.1, abs=0.6)
+    assert body["girths_cm"]["waist"] < body["girths_cm"]["chest"]
+    assert body["segments_cm"]["shoulder_height"] == pytest.approx(143.2, abs=0.2)
+
+    lean = client.get("/api/body", params={"height_cm": 185, "weight_kg": 61}).json()
+    heavy = client.get("/api/body", params={"height_cm": 185, "weight_kg": 95}).json()
+    assert lean["girths_cm"]["waist"] < heavy["girths_cm"]["waist"]
+    assert lean["segments_cm"]["knee_height"] == heavy["segments_cm"]["knee_height"]
+    assert heavy["morph"][1] > lean["morph"][1]
+
+    rejected = client.get("/api/body", params={"height_cm": 50, "weight_kg": 70})
+    assert rejected.status_code == 422

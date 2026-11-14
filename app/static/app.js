@@ -567,6 +567,7 @@ function fitPayload() {
   const weight = Number(fit.weight) || 70;
   return {
     height: fit.height,
+    weight,
     body: Math.round(Math.max(0, Math.min(100, ((weight - 45) / 90) * 100))),
     skin: fit.skin,
     faceUrl: fit.face || "",
