@@ -336,6 +336,38 @@ export function mount(container, initial) {
     });
     hairAnchor.add(group);
   }
+  const hatMat = new THREE.MeshStandardMaterial({ color: "#2c3138", roughness: 0.72, metalness: 0.04 });
+  const hatStyles = { cap: new THREE.Group(), beanie: new THREE.Group(), hood: new THREE.Group() };
+  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.36, 0.2, 16), hatMat);
+  crown.position.set(0, 0.64, 0.02);
+  const brim = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.035, 0.28), hatMat);
+  brim.position.set(0, 0.52, 0.22);
+  hatStyles.cap.add(crown, brim);
+  const beanie = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), hatMat);
+  beanie.scale.set(1, 0.58, 1);
+  beanie.position.set(0, 0.66, 0);
+  hatStyles.beanie.add(beanie);
+  const hood = new THREE.Mesh(new THREE.SphereGeometry(0.48, 16, 12), hatMat);
+  hood.scale.set(1.05, 0.86, 0.78);
+  hood.position.set(0, 0.4, -0.08);
+  hatStyles.hood.add(hood);
+  const beardStyles = { stubble: new THREE.Group(), beard: new THREE.Group(), mustache: new THREE.Group() };
+  const stubble = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10), hairMat);
+  stubble.scale.set(1.3, 0.55, 0.45);
+  stubble.position.set(0, -0.08, 0.5);
+  beardStyles.stubble.add(stubble);
+  const beard = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.22, 4, 8), hairMat);
+  beard.position.set(0, -0.16, 0.48);
+  beardStyles.beard.add(beard);
+  const mustache = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 0.06), hairMat);
+  mustache.position.set(0, 0.02, 0.56);
+  beardStyles.mustache.add(mustache);
+  let shownHat = "";
+  let shownBeard = "";
+  for (const group of [...Object.values(hatStyles), ...Object.values(beardStyles)]) {
+    group.visible = false;
+    hairAnchor.add(group);
+  }
   const portraitMat = new THREE.MeshBasicMaterial({
     transparent: true,
     depthWrite: false,
@@ -432,6 +464,20 @@ export function mount(container, initial) {
     if (name === shownGlasses) return;
     shownGlasses = name;
     for (const [key, group] of Object.entries(glassesStyles)) group.visible = key === name;
+  }
+
+  function applyHat(kind) {
+    const name = hatStyles[kind] ? kind : "none";
+    if (name === shownHat) return;
+    shownHat = name;
+    for (const [key, group] of Object.entries(hatStyles)) group.visible = key === name;
+  }
+
+  function applyBeard(kind) {
+    const name = beardStyles[kind] ? kind : "none";
+    if (name === shownBeard) return;
+    shownBeard = name;
+    for (const [key, group] of Object.entries(beardStyles)) group.visible = key === name;
   }
 
   function clothUniform(name) {
@@ -558,6 +604,8 @@ export function mount(container, initial) {
     applyShape(next);
     applyHair(next.hair, next.hairColor);
     applyGlasses(next.glasses);
+    applyHat(next.hat);
+    applyBeard(next.beard);
     applyClothes(next);
     playPose(poseName);
   }

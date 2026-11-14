@@ -536,22 +536,95 @@ function clothCard(item) {
   </button>`;
 }
 
-function railCards(slot, categories) {
+function mark(kind) {
+  const paths = {
+    short: `<path d="M16 30c0-8 6-14 16-14s16 6 16 14v2H16z" fill="currentColor"/>`,
+    medium: `<path d="M14 32c1-12 8-16 18-16s17 4 18 16c-4 2-8-4-18-4s-14 6-18 4z" fill="currentColor"/>`,
+    long: `<path d="M18 20c0-6 6-8 14-8s14 2 14 8c2 10-2 18-6 22h-4c2-6 2-10 0-14-4 2-8 2-8 0-2 4-2 8 0 14h-4c-4-4-6-12-6-22z" fill="currentColor"/>`,
+    bun: `<circle cx="32" cy="16" r="5" fill="currentColor"/><path d="M16 32c0-8 6-12 16-12s16 4 16 12v2H16z" fill="currentColor"/>`,
+    none: `<path d="M20 20l24 24M44 20L20 44" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>`,
+    round: `<circle cx="24" cy="32" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="40" cy="32" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/>`,
+    square: `<rect x="16" y="26" width="12" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><rect x="36" y="26" width="12" height="9" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>`,
+    sun: `<circle cx="24" cy="32" r="7" fill="currentColor"/><circle cx="40" cy="32" r="7" fill="currentColor"/>`,
+    cap: `<path d="M18 30h28v-6c0-4-6-8-14-8s-14 4-14 8v6zM14 32h36v3H14z" fill="currentColor"/>`,
+    beanie: `<path d="M18 34c1-12 6-16 14-16s13 4 14 16H18z" fill="currentColor"/>`,
+    hood: `<path d="M16 36c0-12 6-18 16-18s16 6 16 18v4H16z" fill="currentColor"/>`,
+    stubble: `<path d="M22 28c2 8 6 12 10 12s8-4 10-12" fill="none" stroke="currentColor" stroke-width="2"/>`,
+    beard: `<path d="M22 26c0 12 4 18 10 18s10-6 10-18" fill="currentColor"/>`,
+    mustache: `<path d="M18 32c4-4 8-4 14 0 6-4 10-4 14 0" fill="none" stroke="currentColor" stroke-width="2.4"/>`,
+    face: `<circle cx="32" cy="30" r="12" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="27" cy="28" r="1.4" fill="currentColor"/><circle cx="37" cy="28" r="1.4" fill="currentColor"/>`,
+    camera: `<rect x="16" y="24" width="32" height="20" rx="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="32" cy="34" r="5" fill="none" stroke="currentColor" stroke-width="2"/>`,
+  };
+  return `<svg viewBox="0 0 64 64" aria-hidden="true">${paths[kind] || paths.none}</svg>`;
+}
+
+function pick(action, attrs, label, glyph, on) {
+  return `<button type="button" class="circle-pick${on ? " on" : ""}" data-action="${action}" ${attrs}><span class="circle-cell">${mark(glyph)}</span><span class="circle-label">${label}</span></button>`;
+}
+
+function styleItems(key) {
+  if (key === "top") return items.filter((item) => item.category === "top" || item.category === "dress");
+  if (key === "sweater") return items.filter((item) => item.category === "outerwear" || (item.category === "top" && ["sviter", "xudi"].includes(item.subtype)));
+  if (key === "bottom") return items.filter((item) => item.category === "bottom");
+  if (key === "shoes") return items.filter((item) => item.category === "shoes");
+  return items.filter((item) => item.category === "accessory");
+}
+
+function railCards(slot, list) {
   const fit = ensureFitState();
-  const list = items.filter((item) => categories.includes(item.category));
   if (!list.length) return `<button type="button" class="dock-empty" data-action="nav" data-view="add">Kiyim qo'shish</button>`;
   const cards = list.map((item) => `<button type="button" class="circle-pick rail-card${String(item.id) === String(fit[slot]) ? " on" : ""}" data-action="wear" data-slot="${slot}" data-id="${item.id}" aria-label="${esc(item.name)}"><span class="circle-cell circle-photo">${photo(item)}</span><span class="circle-label">${esc(item.name)}</span></button>`).join("");
   return `<div class="rail circle-rail" data-slot="${slot}">${cards}</div>`;
 }
 
 function dockHTML() {
-  const cats = [["top", "Ustki"], ["bottom", "Shim"], ["shoes", "Poyabzal"]]
-    .map(([key, label]) => `<button type="button" class="galaxy-cat${state.styleRail === key ? " on" : ""}" data-action="show-rail" data-rail="${key}">${label}</button>`)
-    .join("");
-  return `<div class="galaxy-cats">${cats}</div>
-    <div class="rail-wrap${state.styleRail === "top" ? "" : " hidden"}" data-rail="top">${railCards("top", ["top", "outerwear", "dress"])}</div>
-    <div class="rail-wrap${state.styleRail === "bottom" ? "" : " hidden"}" data-rail="bottom">${railCards("bottom", ["bottom"])}</div>
-    <div class="rail-wrap${state.styleRail === "shoes" ? "" : " hidden"}" data-rail="shoes">${railCards("shoes", ["shoes"])}</div>`;
+  const fit = ensureFitState();
+  const look = state.dockTab !== "style";
+  const hair = [["short", "Kalta", "short"], ["medium", "O'rta", "medium"], ["long", "Uzun", "long"], ["bun", "Yig'ilgan", "bun"]]
+    .map(([key, label, glyph]) => pick("set-hair", `data-hair="${key}"`, label, glyph, fit.hair === key)).join("");
+  const colors = [["#1a120e", "Qora"], ["#6b3e26", "Jigarrang"], ["#c6a15b", "Malla"], ["#8d3b2a", "Qizil"], ["#d7d2cb", "Oq"]]
+    .map(([color, label]) => `<button type="button" class="circle-pick${fit.hairColor === color ? " on" : ""}" data-action="set-hair-color" data-color="${color}"><span class="circle-cell swatch-cell" style="--dot:${color}"></span><span class="circle-label">${label}</span></button>`).join("");
+  const glasses = [["none", "Yo'q", "none"], ["round", "Dumaloq", "round"], ["square", "To'rtburchak", "square"], ["sun", "Quyosh", "sun"]]
+    .map(([key, label, glyph]) => pick("set-glasses", `data-glasses="${key}"`, label, glyph, (fit.glasses || "none") === key)).join("");
+  const hats = [["none", "Yo'q", "none"], ["cap", "Kepka", "cap"], ["beanie", "Shapka", "beanie"], ["hood", "Kapyushon", "hood"]]
+    .map(([key, label, glyph]) => pick("set-hat", `data-hat="${key}"`, label, glyph, (fit.hat || "none") === key)).join("");
+  const beards = [["none", "Yo'q", "none"], ["stubble", "Qisqa", "stubble"], ["beard", "Soqol", "beard"], ["mustache", "Mo'ylov", "mustache"]]
+    .map(([key, label, glyph]) => pick("set-beard", `data-beard="${key}"`, label, glyph, (fit.beard || "none") === key)).join("");
+  const skins = ["#f3d3bf", "#e7b892", "#c68642", "#8d5524", "#5c3317", "#3b2214"]
+    .map((color, index) => `<button type="button" class="circle-pick${Number(fit.skin) === index && !fit.skinHex ? " on" : ""}" data-action="set-skin" data-skin="${index}"><span class="circle-cell swatch-cell" style="--dot:${color}"></span><span class="circle-label">${index + 1}</span></button>`).join("");
+  const lookCats = [["hair", "Soch"], ["color", "Rang"], ["glasses", "Ko'zoynak"], ["hat", "Bosh kiyim"], ["beard", "Soqol"], ["skin", "Teri"], ["face", "Yuz"]]
+    .map(([key, label]) => `<button type="button" class="galaxy-cat${state.lookRail === key ? " on" : ""}" data-action="set-look" data-look="${key}">${label}</button>`).join("");
+  const styleCats = [["top", "Ustki"], ["sweater", "Kofta"], ["bottom", "Shim"], ["shoes", "Poyabzal"], ["extra", "Aksessuar"]]
+    .map(([key, label]) => `<button type="button" class="galaxy-cat${state.styleRail === key ? " on" : ""}" data-action="show-rail" data-rail="${key}">${label}</button>`).join("");
+  const styleSlot = { top: "top", sweater: "top", bottom: "bottom", shoes: "shoes", extra: "extra" };
+  const styleRails = ["top", "sweater", "bottom", "shoes", "extra"].map((key) => `<div class="rail-wrap${state.styleRail === key ? "" : " hidden"}" data-rail="${key}">${railCards(styleSlot[key], styleItems(key))}</div>`).join("");
+  return `<div class="galaxy-tabs">
+      <button type="button" class="galaxy-tab${look ? " on" : ""}" data-action="set-dock" data-dock="look">Ko'rinish</button>
+      <button type="button" class="galaxy-tab${look ? "" : " on"}" data-action="set-dock" data-dock="style">Uslub</button>
+    </div>
+    <div class="galaxy-pane${look ? "" : " hidden"}" data-pane="look">
+      <div class="galaxy-cats">${lookCats}</div>
+      <div class="look-pane${state.lookRail === "hair" ? "" : " hidden"}" data-look="hair"><div class="circle-rail">${hair}</div></div>
+      <div class="look-pane${state.lookRail === "color" ? "" : " hidden"}" data-look="color"><div class="circle-rail">${colors}</div></div>
+      <div class="look-pane${state.lookRail === "glasses" ? "" : " hidden"}" data-look="glasses"><div class="circle-rail">${glasses}</div></div>
+      <div class="look-pane${state.lookRail === "hat" ? "" : " hidden"}" data-look="hat"><div class="circle-rail">${hats}</div></div>
+      <div class="look-pane${state.lookRail === "beard" ? "" : " hidden"}" data-look="beard"><div class="circle-rail">${beards}</div></div>
+      <div class="look-pane${state.lookRail === "skin" ? "" : " hidden"}" data-look="skin"><div class="circle-rail">${skins}</div></div>
+      <div class="look-pane${state.lookRail === "face" ? "" : " hidden"}" data-look="face"><div class="circle-rail">
+        <label class="circle-pick"><span class="circle-cell">${mark("camera")}<input id="fit-face" hidden type="file" accept="image/*" capture="user"></span><span class="circle-label">Kamera</span></label>
+        <label class="circle-pick"><span class="circle-cell">${mark("face")}<input id="fit-avatar" hidden type="file" accept="image/*"></span><span class="circle-label">Tasvir</span></label>
+      </div></div>
+    </div>
+    <div class="galaxy-pane${look ? " hidden" : ""}" data-pane="style">
+      <div class="galaxy-cats">${styleCats}</div>
+      ${styleRails}
+    </div>
+    <div class="dock-controls">
+      <div class="stage-sliders">
+        <label>Bo'y <b id="fit-height-label">${fit.height}</b><input id="fit-height" type="range" min="150" max="200" value="${fit.height}"></label>
+        <label>Vazn <b id="fit-weight-label">${fit.weight}</b><input id="fit-weight" type="range" min="40" max="140" value="${fit.weight}"></label>
+      </div>
+    </div>`;
 }
 
 function viewHome() {
@@ -771,6 +844,9 @@ function ensureFitState() {
       shoes: "",
       pose: "rest",
       glasses: "none",
+      hat: "none",
+      beard: "none",
+      extra: "",
       drapeTop: "",
       drapeBottom: "",
       shoulder: 1,
@@ -783,6 +859,9 @@ function ensureFitState() {
   state.fit.hairColor = state.fit.hairColor || "#1a120e";
   state.fit.pose = state.fit.pose || "rest";
   state.fit.glasses = state.fit.glasses || "none";
+  state.fit.hat = state.fit.hat || "none";
+  state.fit.beard = state.fit.beard || "none";
+  if (!state.fit.extra) state.fit.extra = "";
   state.fit.drapeTop = state.fit.drapeTop || "";
   state.fit.drapeBottom = state.fit.drapeBottom || "";
   if (!state.fit.shoulder) state.fit.shoulder = 1;
@@ -796,15 +875,17 @@ function stageAdvice() {
   const top = items.find((item) => String(item.id) === String(fit.top));
   const bottom = items.find((item) => String(item.id) === String(fit.bottom));
   const shoe = items.find((item) => String(item.id) === String(fit.shoes));
+  const extra = items.find((item) => String(item.id) === String(fit.extra));
   const bits = [];
   if (fit.fromAvatar && fit.agentNote) bits.push(fit.agentNote);
-  if (!top && !bottom && !shoe) {
+  if (!top && !bottom && !shoe && !extra) {
     bits.push("Pastdagi doiradan kiyimni bos — u avatarga darhol kiydiriladi.");
     return bits.join(" ");
   }
   if (top) bits.push(`${top.name} senga juda mos tushadi.`);
   if (bottom) bits.push(`${bottom.name} tana chizig'ini yaxshi ushlaydi.`);
   if (shoe && top) bits.push(`${shoe.name} bilan bu obraz to'liq chiqadi.`);
+  if (extra) bits.push(`${extra.name} obrazga qo'shimcha bo'ladi.`);
   return bits.join(" ");
 }
 
@@ -832,6 +913,8 @@ function fitPayload() {
     hairColor: fit.hairColor,
     pose: fit.pose || "rest",
     glasses: fit.glasses || "none",
+    hat: fit.hat || "none",
+    beard: fit.beard || "none",
     topUrl: fit.drapeTop || top?.image_url || "",
     bottomUrl: fit.drapeBottom || bottom?.image_url || "",
     shoeUrl: shoe?.image_url || "",
@@ -1144,7 +1227,7 @@ document.body.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button || state.busy) return;
   const action = button.dataset.action;
-  const instant = new Set(["more", "close-modal", "open-item", "set-cat", "toggle-forgotten", "remove-pending", "pick-day", "toggle-pick", "wear", "show-rail", "set-hair", "set-hair-color", "set-pose", "set-dock", "set-look", "set-glasses", "set-skin"]);
+  const instant = new Set(["more", "close-modal", "open-item", "set-cat", "toggle-forgotten", "remove-pending", "pick-day", "toggle-pick", "wear", "show-rail", "set-hair", "set-hair-color", "set-pose", "set-dock", "set-look", "set-glasses", "set-skin", "set-hat", "set-beard"]);
   if (!instant.has(action)) lockUi(button);
   try {
     if (action === "nav") {
@@ -1183,6 +1266,16 @@ document.body.addEventListener("click", async (event) => {
       document.querySelectorAll("[data-action='set-skin']").forEach((node) => node.classList.toggle("on", node.dataset.skin === button.dataset.skin));
       fitApi?.update(fitPayload());
       paintAdvice();
+    } else if (action === "set-hat") {
+      const fit = ensureFitState();
+      fit.hat = button.dataset.hat || "none";
+      document.querySelectorAll("[data-action='set-hat']").forEach((node) => node.classList.toggle("on", node.dataset.hat === fit.hat));
+      fitApi?.update(fitPayload());
+    } else if (action === "set-beard") {
+      const fit = ensureFitState();
+      fit.beard = button.dataset.beard || "none";
+      document.querySelectorAll("[data-action='set-beard']").forEach((node) => node.classList.toggle("on", node.dataset.beard === fit.beard));
+      fitApi?.update(fitPayload());
     } else if (action === "set-glasses") {
       const fit = ensureFitState();
       fit.glasses = button.dataset.glasses || "none";
