@@ -198,14 +198,15 @@ export function mount(container, initial) {
   renderer.setSize(width, height);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.16;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.style.touchAction = "none";
   container.replaceChildren(renderer.domElement);
 
-  scene.add(new THREE.HemisphereLight("#fff6ee", "#4a342c", 0.78));
-  const key = new THREE.DirectionalLight("#fff8f2", 2.05);
+  scene.background = new THREE.Color("#d7e2f1");
+  scene.add(new THREE.HemisphereLight("#ffffff", "#b7c6da", 1.45));
+  const key = new THREE.DirectionalLight("#ffffff", 2.7);
   key.position.set(1.2, 3.2, 2.4);
   key.castShadow = true;
   key.shadow.mapSize.set(mobile ? 512 : 1024, mobile ? 512 : 1024);
@@ -218,16 +219,16 @@ export function mount(container, initial) {
   key.shadow.bias = -0.0004;
   key.shadow.normalBias = 0.025;
   scene.add(key);
-  const fill = new THREE.DirectionalLight("#d5e4ff", 0.42);
+  const fill = new THREE.DirectionalLight("#e7f1ff", 1.05);
   fill.position.set(-2.1, 1.6, 1.4);
   scene.add(fill);
-  const rim = new THREE.DirectionalLight("#f2d3ae", 0.85);
+  const rim = new THREE.DirectionalLight("#ffffff", 0.7);
   rim.position.set(-0.8, 2.2, -2.6);
   scene.add(rim);
 
   const floor = new THREE.Mesh(
     new THREE.CircleGeometry(1.4, mobile ? 32 : 48),
-    new THREE.MeshStandardMaterial({ color: "#1b1713", roughness: 0.94, metalness: 0 })
+    new THREE.MeshStandardMaterial({ color: "#f7f9fc", roughness: 0.72, metalness: 0 })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.receiveShadow = true;
@@ -260,11 +261,11 @@ export function mount(container, initial) {
   const hairStyles = { short: new THREE.Group(), medium: new THREE.Group(), long: new THREE.Group(), bun: new THREE.Group() };
   const cap = new THREE.SphereGeometry(0.55, 22, 16);
   const shortCap = hairMesh(cap, hairMat);
-  shortCap.position.y = 0.28;
+  shortCap.position.y = 0.66;
   shortCap.scale.set(0.92, 0.42, 0.95);
   hairStyles.short.add(shortCap);
   const mediumCap = hairMesh(cap, hairMat);
-  mediumCap.position.y = 0.4;
+  mediumCap.position.y = 0.72;
   mediumCap.scale.set(0.96, 0.46, 1);
   const side = new THREE.SphereGeometry(0.18, 14, 12);
   const sideL = hairMesh(side, hairMat);
@@ -273,7 +274,7 @@ export function mount(container, initial) {
   sideR.position.set(0.38, 0.05, 0.02);
   hairStyles.medium.add(mediumCap, sideL, sideR);
   const longCap = hairMesh(cap, hairMat);
-  longCap.position.y = 0.4;
+  longCap.position.y = 0.72;
   longCap.scale.set(0.94, 0.44, 1);
   const lock = new THREE.CapsuleGeometry(0.07, 0.55, 4, 8);
   const lockL = hairMesh(lock, hairMat);
@@ -282,13 +283,42 @@ export function mount(container, initial) {
   lockR.position.set(0.28, -0.35, -0.16);
   hairStyles.long.add(longCap, lockL, lockR);
   const bunCap = hairMesh(cap, hairMat);
-  bunCap.position.y = 0.36;
+  bunCap.position.y = 0.66;
   bunCap.scale.set(0.9, 0.4, 0.95);
   const bun = hairMesh(new THREE.SphereGeometry(0.2, 16, 12), hairMat);
   bun.position.set(0, 0.72, -0.08);
   hairStyles.bun.add(bunCap, bun);
   for (const group of Object.values(hairStyles)) {
     group.visible = false;
+    hairAnchor.add(group);
+  }
+  const frameMat = new THREE.MeshStandardMaterial({ color: "#1c1c1c", roughness: 0.28, metalness: 0.45 });
+  const lensMat = new THREE.MeshStandardMaterial({ color: "#223044", roughness: 0.08, metalness: 0.05, transparent: true, opacity: 0.42 });
+  const glassesStyles = { round: new THREE.Group(), square: new THREE.Group(), sun: new THREE.Group() };
+  const roundL = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.018, 8, 18), frameMat);
+  const roundR = roundL.clone();
+  roundL.position.set(-0.2, 0.16, 0.46);
+  roundR.position.set(0.2, 0.16, 0.46);
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.02, 0.02), frameMat);
+  bridge.position.set(0, 0.18, 0.46);
+  glassesStyles.round.add(roundL, roundR, bridge);
+  const squareL = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.16, 0.03), frameMat);
+  const squareR = squareL.clone();
+  squareL.position.set(-0.2, 0.16, 0.46);
+  squareR.position.set(0.2, 0.16, 0.46);
+  const squareBridge = bridge.clone();
+  glassesStyles.square.add(squareL, squareR, squareBridge);
+  const sunL = new THREE.Mesh(new THREE.CircleGeometry(0.15, 18), lensMat);
+  const sunR = sunL.clone();
+  sunL.position.set(-0.2, 0.16, 0.47);
+  sunR.position.set(0.2, 0.16, 0.47);
+  const sunRingL = roundL.clone();
+  const sunRingR = roundR.clone();
+  glassesStyles.sun.add(sunL, sunR, sunRingL, sunRingR, bridge.clone());
+  let shownGlasses = "";
+  for (const group of Object.values(glassesStyles)) {
+    group.visible = false;
+    group.scale.setScalar(1.25);
     hairAnchor.add(group);
   }
   scene.add(hairAnchor);
@@ -351,12 +381,12 @@ export function mount(container, initial) {
     const hipUniform = uniform("uHips");
     if (shoulderUniform) shoulderUniform.value = shoulder;
     if (hipUniform) hipUniform.value = hips;
-    lookY = meters * 0.5;
+    lookY = meters * 0.42;
     if (placedHeight !== heightCm) {
       placedHeight = heightCm;
       dist = meters * 3.6;
     }
-    hairAnchor.scale.setScalar(0.22 * (heightCm / 170));
+    hairAnchor.scale.setScalar(0.68 * (heightCm / 170));
     const tone = next.skinHex || SKINS[Number(next.skin)] || SKINS[2];
     if (outfit.skinTone) outfit.skinTone.color.set(tone);
     if (outfit.face && !outfit.face.map) outfit.face.color.set(tone);
@@ -370,6 +400,13 @@ export function mount(container, initial) {
       for (const [key, group] of Object.entries(hairStyles)) group.visible = key === name;
     }
     hairMat.color.set(color || "#1a120e");
+  }
+
+  function applyGlasses(kind) {
+    const name = glassesStyles[kind] ? kind : "none";
+    if (name === shownGlasses) return;
+    shownGlasses = name;
+    for (const [key, group] of Object.entries(glassesStyles)) group.visible = key === name;
   }
 
   function clothUniform(name) {
@@ -490,6 +527,7 @@ export function mount(container, initial) {
     if (!ready) return;
     applyShape(next);
     applyHair(next.hair, next.hairColor);
+    applyGlasses(next.glasses);
     applyClothes(next);
     playPose(poseName);
   }
