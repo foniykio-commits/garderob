@@ -541,10 +541,77 @@ export function mount(container, initial) {
   applyHair(initial.hair, initial.hairColor);
   animate();
 
+  async function projections() {
+    if (!ready) return [];
+    const shots = [
+      ["old", 0, 0.04],
+      ["orqa", Math.PI, 0.04],
+      ["chap", Math.PI / 2, 0.04],
+      ["ong", -Math.PI / 2, 0.04],
+      ["tepa", 0.15, 1.28],
+      ["past", 0.15, -1.12],
+    ];
+    const saved = {
+      yaw, pitch, dist, aspect: camera.aspect,
+      width: container.clientWidth || 320,
+      height: container.clientHeight || 480,
+      fog: scene.fog,
+    };
+    const frames = [];
+    const target = new THREE.WebGLRenderTarget(1024, 1024);
+    const pixels = new Uint8Array(1024 * 1024 * 4);
+    const sheet = document.createElement("canvas");
+    sheet.width = 1024;
+    sheet.height = 1024;
+    const context = sheet.getContext("2d", { willReadFrequently: true });
+    scene.fog = null;
+    camera.aspect = 1;
+    camera.updateProjectionMatrix();
+    const shotDist = Math.max(saved.dist, lookY * 3.35, 3.2);
+    try {
+      for (const [name, shotYaw, shotPitch] of shots) {
+        yaw = shotYaw;
+        pitch = shotPitch;
+        dist = shotDist;
+        applyPose(clock.getElapsedTime());
+        syncClothUniforms();
+        if (headBone) {
+          headBone.getWorldPosition(hairAnchor.position);
+          hairAnchor.position.y += 0.015 * figure.scale.y;
+        }
+        figure.updateMatrixWorld(true);
+        placeCamera();
+        renderer.setRenderTarget(target);
+        renderer.render(scene, camera);
+        renderer.readRenderTargetPixels(target, 0, 0, 1024, 1024, pixels);
+        renderer.setRenderTarget(null);
+        const image = context.createImageData(1024, 1024);
+        for (let row = 0; row < 1024; row += 1) {
+          const source = (1023 - row) * 1024 * 4;
+          image.data.set(pixels.subarray(source, source + 1024 * 4), row * 1024 * 4);
+        }
+        context.putImageData(image, 0, 0);
+        const blob = await new Promise((resolve) => sheet.toBlob(resolve, "image/png"));
+        if (blob) frames.push({ name: `${name}.png`, blob });
+      }
+    } finally {
+      target.dispose();
+      yaw = saved.yaw;
+      pitch = saved.pitch;
+      dist = saved.dist;
+      scene.fog = saved.fog;
+      camera.aspect = saved.width / Math.max(saved.height, 1);
+      camera.updateProjectionMatrix();
+      placeCamera();
+    }
+    return frames;
+  }
+
   return {
     update(next) {
       apply(next);
     },
+    projections,
     dispose() {
       stopped = true;
       cancelAnimationFrame(frame);

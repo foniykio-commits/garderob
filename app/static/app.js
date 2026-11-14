@@ -75,6 +75,59 @@ async function api(path, options = {}) {
   }
 }
 
+function crc32(data) {
+  let crc = -1;
+  for (let index = 0; index < data.length; index += 1) {
+    crc ^= data[index];
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+  }
+  return (~crc) >>> 0;
+}
+
+function zipStore(files) {
+  const encoder = new TextEncoder();
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  for (const file of files) {
+    const name = encoder.encode(file.name);
+    const crc = crc32(file.data);
+    const local = new Uint8Array(30 + name.length);
+    const view = new DataView(local.buffer);
+    view.setUint32(0, 0x04034b50, true);
+    view.setUint16(4, 20, true);
+    view.setUint32(14, crc, true);
+    view.setUint32(18, file.data.length, true);
+    view.setUint32(22, file.data.length, true);
+    view.setUint16(26, name.length, true);
+    local.set(name, 30);
+    parts.push(local, file.data);
+    const entry = new Uint8Array(46 + name.length);
+    const centralView = new DataView(entry.buffer);
+    centralView.setUint32(0, 0x02014b50, true);
+    centralView.setUint16(4, 20, true);
+    centralView.setUint16(6, 20, true);
+    centralView.setUint32(16, crc, true);
+    centralView.setUint32(20, file.data.length, true);
+    centralView.setUint32(24, file.data.length, true);
+    centralView.setUint16(28, name.length, true);
+    centralView.setUint32(42, offset, true);
+    entry.set(name, 46);
+    central.push(entry);
+    offset += local.length + file.data.length;
+  }
+  let centralSize = 0;
+  for (const entry of central) centralSize += entry.length;
+  const end = new Uint8Array(22);
+  const endView = new DataView(end.buffer);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralSize, true);
+  endView.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end], { type: "application/zip" });
+}
+
 function toast(message) {
   const node = document.getElementById("toast");
   node.textContent = message;
@@ -434,6 +487,7 @@ function dockHTML() {
     </div>
     <div class="hair-row">
       ${[["rest", "Tinch"], ["wave", "Salom"], ["walk", "Yurish"], ["sit", "O'tirish"]].map(([key, label]) => `<button type="button" class="chip${fit.pose === key ? " on" : ""}" data-action="set-pose" data-pose="${key}">${label}</button>`).join("")}
+      <button type="button" class="chip" data-action="download-projections">3D agent</button>
     </div>
     <div class="hair-row">
       ${[["short", "Kalta"], ["medium", "O'rta"], ["long", "Uzun"], ["bun", "Yig'ilgan"]].map(([key, label]) => `<button type="button" class="chip${fit.hair === key ? " on" : ""}" data-action="set-hair" data-hair="${key}">${label}</button>`).join("")}
@@ -1076,6 +1130,34 @@ document.body.addEventListener("click", async (event) => {
       document.querySelectorAll("[data-action='set-hair']").forEach((node) => node.classList.toggle("on", node.dataset.hair === fit.hair));
       fitApi?.update(fitPayload());
       paintAdvice();
+    } else if (action === "download-projections") {
+      if (!fitApi?.projections) {
+        toast("3D xona hali ochilmadi");
+        return;
+      }
+      button.disabled = true;
+      toast("3D agent proyeksiyalarni chizmoqda…");
+      try {
+        const frames = await fitApi.projections();
+        if (!frames.length) {
+          toast("3D tana hali tayyor emas");
+          return;
+        }
+        const files = [];
+        for (const frame of frames) files.push({ name: frame.name, data: new Uint8Array(await frame.blob.arrayBuffer()) });
+        const zip = zipStore(files);
+        const url = URL.createObjectURL(zip);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "garderob-3d-proyeksiya.zip";
+        link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        toast("6 ta proyeksiya yuklandi: old, orqa, chap, o'ng, tepa, past");
+      } catch (_error) {
+        toast("Proyeksiya yuklanmadi");
+      } finally {
+        button.disabled = false;
+      }
     } else if (action === "set-pose") {
       const fit = ensureFitState();
       fit.pose = button.dataset.pose || "rest";
