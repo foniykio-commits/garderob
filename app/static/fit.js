@@ -13,17 +13,27 @@ function blankTexture() {
 }
 
 function installBodyShader(material, blank, state) {
-  material.customProgramCacheKey = () => "anatomical-body-v3";
+  material.customProgramCacheKey = () => "anatomical-body-v4";
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uFat = { value: state.fat };
     shader.uniforms.uSpan = { value: state.span };
     shader.uniforms.uFoot = { value: state.foot };
+    shader.uniforms.uShoulder = { value: state.shoulder };
+    shader.uniforms.uHips = { value: state.hips };
     shader.uniforms.uHasFace = { value: 0 };
     shader.uniforms.uFaceMap = { value: blank };
-    shader.vertexShader = `varying float vY01;\nvarying float vFront;\nvarying vec3 vBind;\nuniform float uFat;\nuniform float uSpan;\nuniform float uFoot;\n${shader.vertexShader}`;
+    shader.vertexShader = `varying float vY01;\nvarying float vFront;\nvarying vec3 vBind;\nuniform float uFat;\nuniform float uSpan;\nuniform float uFoot;\nuniform float uShoulder;\nuniform float uHips;\n${shader.vertexShader}`;
     shader.vertexShader = shader.vertexShader.replace(
       "#include <skinning_vertex>",
-      `#include <skinning_vertex>
+      `float yBind = clamp((transformed.y - uFoot) / uSpan, 0.0, 1.0);
+      float axialBind = length(transformed.xz);
+      float coreBind = 1.0 - smoothstep(0.13, 0.26, axialBind);
+      float shoulderBand = smoothstep(0.66, 0.74, yBind) * (1.0 - smoothstep(0.80, 0.86, yBind));
+      float hipBand = smoothstep(0.40, 0.48, yBind) * (1.0 - smoothstep(0.56, 0.64, yBind));
+      float widen = ((uShoulder - 1.0) * shoulderBand + (uHips - 1.0) * hipBand) * coreBind;
+      transformed.x *= 1.0 + widen;
+      transformed.z *= 1.0 + widen * 0.4;
+      #include <skinning_vertex>
       float y01 = clamp((position.y - uFoot) / uSpan, 0.0, 1.0);
       float axial = length(position.xz);
       float core = 1.0 - smoothstep(0.14, 0.24, axial);
@@ -204,7 +214,7 @@ export function mount(container, initial) {
   const figure = new THREE.Group();
   scene.add(figure);
   const blank = blankTexture();
-  const bodyState = { fat: 0, span: 1.68, foot: 0 };
+  const bodyState = { fat: 0, span: 1.68, foot: 0, shoulder: 1, hips: 1 };
   const skin = new THREE.MeshPhysicalMaterial({
     color: SKINS[initial.skin] || SKINS[2],
     roughness: 0.46,
@@ -307,13 +317,21 @@ export function mount(container, initial) {
     bodyState.fat = fat;
     const fatUniform = uniform("uFat");
     if (fatUniform) fatUniform.value = fat;
+    const shoulder = Math.min(1.25, Math.max(0.8, Number(next.shoulder) || 1));
+    const hips = Math.min(1.25, Math.max(0.8, Number(next.hips) || 1));
+    bodyState.shoulder = shoulder;
+    bodyState.hips = hips;
+    const shoulderUniform = uniform("uShoulder");
+    const hipUniform = uniform("uHips");
+    if (shoulderUniform) shoulderUniform.value = shoulder;
+    if (hipUniform) hipUniform.value = hips;
     lookY = meters * 0.5;
     if (placedHeight !== heightCm) {
       placedHeight = heightCm;
       dist = meters * 2.55;
     }
     hairAnchor.scale.setScalar(0.18 * (heightCm / 170));
-    skin.color.set(SKINS[Number(next.skin)] || SKINS[2]);
+    skin.color.set(next.skinHex || SKINS[Number(next.skin)] || SKINS[2]);
   }
 
   function applyHair(style, color) {

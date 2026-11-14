@@ -1,4 +1,4 @@
-const VERSION = "v12";
+const VERSION = "v13";
 const SHELL_CACHE = `garderob-shell-${VERSION}`;
 const DATA_CACHE = `garderob-data-${VERSION}`;
 const MEDIA_CACHE = `garderob-media-${VERSION}`;

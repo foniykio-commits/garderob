@@ -151,3 +151,97 @@ def test_body_measurements_follow_height_and_bmi(client):
 
     rejected = client.get("/api/body", params={"height_cm": 50, "weight_kg": 70})
     assert rejected.status_code == 422
+
+
+def _portrait(width, height, paint) -> bytes:
+    image = Image.new("RGB", (width, height), "white")
+    pixels = image.load()
+    paint(pixels, width, height)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _face_photo() -> bytes:
+    def paint(pixels, width, height):
+        for y in range(40, 78):
+            for x in range(48, 152):
+                pixels[x, y] = (36, 24, 18)
+        for y in range(70, 200):
+            for x in range(50, 150):
+                if ((x - 100) / 50) ** 2 + ((y - 130) / 70) ** 2 <= 1:
+                    pixels[x, y] = (198, 134, 66)
+        for y in range(104, 118):
+            for x in range(78, 92):
+                pixels[x, y] = (20, 16, 14)
+            for x in range(112, 126):
+                pixels[x, y] = (20, 16, 14)
+
+    return _portrait(200, 240, paint)
+
+
+def _body_photo(broad: bool) -> bytes:
+    def paint(pixels, width, height):
+        skin = (196, 142, 108)
+        for y in range(10, 271):
+            if y < 42:
+                xs = range(42, 58)
+            elif y < 96:
+                xs = range(8, 92) if broad else range(34, 66)
+            elif y < 150:
+                xs = range(30, 70)
+            elif y < 196:
+                xs = range(26, 74) if broad else range(36, 64)
+            elif 32 <= (y % 2) or True:
+                xs = list(range(32, 46)) + list(range(54, 68))
+            else:
+                xs = range(0, 0)
+            for x in xs:
+                pixels[x, y] = skin
+
+    return _portrait(100, 280, paint)
+
+
+def test_avatar_reads_face_skin_and_body_shape(client):
+    response = client.post(
+        "/api/avatar",
+        files=[
+            ("files", ("face.png", _face_photo(), "image/png")),
+            ("files", ("body.png", _body_photo(True), "image/png")),
+        ],
+        data={"hint": "auto"},
+    )
+    assert response.status_code == 200, response.text
+    avatar = response.json()
+    assert avatar["skin_hex"].lower() == "#c68642"
+    assert avatar["skin_index"] == 2
+    assert avatar["hair_hex"] is not None
+    assert avatar["reads"] == [{"index": 0, "kind": "face"}, {"index": 1, "kind": "body"}]
+    assert len(avatar["features"]) == 2
+    assert all(feature["name"] == "eye" for feature in avatar["features"])
+    assert avatar["face_index"] == 0
+    assert 0.15 < avatar["face_box"]["x"] < 0.5
+    assert avatar["face_box"]["w"] > 0.25
+    assert avatar["height_cm"] >= 150
+    assert avatar["shoulder"] > 1.05
+    assert avatar["hips"] < 1
+
+    narrow = client.post(
+        "/api/avatar",
+        files=[("files", ("body.png", _body_photo(False), "image/png"))],
+        data={"hint": "body"},
+    )
+    assert narrow.status_code == 200, narrow.text
+    slim = narrow.json()
+    assert slim["weight_kg"] < avatar["weight_kg"]
+    assert slim["shoulder"] < avatar["shoulder"]
+
+    empty = Image.new("RGB", (80, 80), "white")
+    blank_buffer = io.BytesIO()
+    empty.save(blank_buffer, format="PNG")
+    blank = client.post(
+        "/api/avatar",
+        files=[("files", ("empty.png", blank_buffer.getvalue(), "image/png"))],
+        data={"hint": "auto"},
+    )
+    assert blank.status_code == 422

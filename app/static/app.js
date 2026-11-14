@@ -234,6 +234,88 @@ async function cutGarment(file) {
   return canvas.toDataURL("image/png");
 }
 
+async function cropFace(file, box) {
+  const bitmap = await createImageBitmap(file);
+  const x = Math.max(0, box.x * bitmap.width);
+  const y = Math.max(0, box.y * bitmap.height);
+  const width = Math.max(1, Math.min(bitmap.width - x, box.w * bitmap.width));
+  const height = Math.max(1, Math.min(bitmap.height - y, box.h * bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 320;
+  const context = canvas.getContext("2d");
+  context.drawImage(bitmap, x, y, width, height, 0, 0, 256, 320);
+  if (bitmap.close) bitmap.close();
+  return canvas.toDataURL("image/jpeg", 0.86);
+}
+
+async function readAvatar(files, hint) {
+  const form = new FormData();
+  for (const file of files) form.append("files", file, file.name || "photo.jpg");
+  form.append("hint", hint);
+  return api("/api/avatar", { method: "POST", body: form });
+}
+
+async function applyAvatarFiles(fileList, hint) {
+  const files = [...fileList].filter((file) => file.type.startsWith("image/")).slice(0, 4);
+  if (!files.length) {
+    toast("Rasm tanlanmadi");
+    return;
+  }
+  let result = null;
+  try {
+    result = await readAvatar(files, hint);
+  } catch (error) {
+    if (hint === "body") {
+      const measured = await measureBody(files[0]);
+      if (measured) {
+        const fit = ensureFitState();
+        fit.height = measured.height;
+        fit.weight = measured.weight;
+        fit.fromBody = true;
+        const height = document.getElementById("fit-height");
+        const weight = document.getElementById("fit-weight");
+        if (height) height.value = String(fit.height);
+        if (weight) weight.value = String(fit.weight);
+        syncFit();
+        toast("Tana rasmidan bo'y va vazn olindi");
+        return;
+      }
+    }
+    toast(error.message || "Rasm o'qilmadi");
+    return;
+  }
+  const fit = ensureFitState();
+  fit.skin = result.skin_index;
+  fit.skinHex = result.skin_hex;
+  fit.fromAvatar = true;
+  if (result.hair_hex) fit.hairColor = result.hair_hex;
+  if (result.height_cm) {
+    fit.height = result.height_cm;
+    fit.weight = result.weight_kg;
+    fit.fromBody = true;
+    fit.shoulder = result.shoulder || 1;
+    fit.hips = result.hips || 1;
+  }
+  if (result.face_box && Number.isInteger(result.face_index)) {
+    try {
+      fit.face = await cropFace(files[result.face_index], result.face_box);
+    } catch (_error) {
+      /* yuz kesimi tushmasa tana rangi baribir qo'llanadi */
+    }
+  }
+  const height = document.getElementById("fit-height");
+  const weight = document.getElementById("fit-weight");
+  const skin = document.getElementById("fit-skin");
+  if (height) height.value = String(fit.height);
+  if (weight) weight.value = String(fit.weight);
+  if (skin) skin.value = String(fit.skin);
+  syncFit();
+  const kinds = new Set((result.reads || []).map((row) => row.kind));
+  if (kinds.has("body") || kinds.has("side")) toast("Yuz, teri va qomat rasmdan olindi");
+  else toast("Yuz va teri rangi avatarga yopishtirildi");
+}
+
 async function measureBody(file) {
   try {
     const small = await shrinkFile(file);
@@ -344,6 +426,7 @@ function dockHTML() {
       <label>Bo'y <b id="fit-height-label">${fit.height}</b><input id="fit-height" type="range" min="150" max="200" value="${fit.height}"></label>
       <label>Vazn <b id="fit-weight-label">${fit.weight}</b><input id="fit-weight" type="range" min="40" max="140" value="${fit.weight}"></label>
       <label>Teri<input id="fit-skin" type="range" min="0" max="5" step="1" value="${fit.skin}"></label>
+      <label class="face-btn">Avatar<input id="fit-avatar" hidden type="file" accept="image/*" multiple></label>
       <label class="face-btn">Yuz<input id="fit-face" hidden type="file" accept="image/*" capture="user"></label>
       <label class="face-btn">Tana<input id="fit-body-photo" hidden type="file" accept="image/*"></label>
       <label class="face-btn">Ustki rasm<input id="fit-garment-top" hidden type="file" accept="image/*"></label>
@@ -585,6 +668,10 @@ function ensureFitState() {
       pose: "rest",
       drapeTop: "",
       drapeBottom: "",
+      shoulder: 1,
+      hips: 1,
+      skinHex: "",
+      fromAvatar: false,
     };
   }
   state.fit.hair = state.fit.hair || "short";
@@ -592,6 +679,9 @@ function ensureFitState() {
   state.fit.pose = state.fit.pose || "rest";
   state.fit.drapeTop = state.fit.drapeTop || "";
   state.fit.drapeBottom = state.fit.drapeBottom || "";
+  if (!state.fit.shoulder) state.fit.shoulder = 1;
+  if (!state.fit.hips) state.fit.hips = 1;
+  if (!state.fit.skinHex) state.fit.skinHex = "";
   return state.fit;
 }
 
@@ -602,7 +692,8 @@ function stageAdvice() {
   const shoe = items.find((item) => String(item.id) === String(fit.shoes));
   const hairName = { short: "kalta soch", medium: "o'rta soch", long: "uzun soch", bun: "yig'ilgan soch" }[fit.hair] || "soch";
   const bits = [];
-  if (fit.fromBody) bits.push(`Tana rasming bo'yicha maket taxminan ${fit.height} sm va ${fit.weight} kg ga yaqinlashtirildi.`);
+  if (fit.fromAvatar) bits.push(`Avatar rasmingdan teri va qomat olindi: taxminan ${fit.height} sm, ${fit.weight} kg.`);
+  else if (fit.fromBody) bits.push(`Tana rasming bo'yicha maket taxminan ${fit.height} sm va ${fit.weight} kg ga yaqinlashtirildi.`);
   if (!top && !bottom && !shoe) {
     bits.push("Karuseldan kiyimni sur yoki bos — stilist shu zahoti aytadi.");
     return bits.join(" ");
@@ -631,6 +722,9 @@ function fitPayload() {
     weight,
     body: Math.round(Math.max(0, Math.min(100, ((weight - 45) / 90) * 100))),
     skin: fit.skin,
+    skinHex: fit.skinHex || "",
+    shoulder: fit.shoulder || 1,
+    hips: fit.hips || 1,
     faceUrl: fit.face || "",
     hair: fit.hair,
     hairColor: fit.hairColor,
@@ -1183,23 +1277,11 @@ document.body.addEventListener("change", async (event) => {
   } else if (target.id === "edit-cat") {
     const select = document.getElementById("edit-sub");
     select.innerHTML = subtypeOptions(target.value, "");
-  } else if (target.id === "fit-body-photo") {
-    const file = target.files?.[0];
-    if (file) {
-      const measured = await measureBody(file);
-      const fit = ensureFitState();
-      if (measured) {
-        fit.height = measured.height;
-        fit.weight = measured.weight;
-        fit.fromBody = true;
-        const height = document.getElementById("fit-height");
-        const weight = document.getElementById("fit-weight");
-        if (height) height.value = String(fit.height);
-        if (weight) weight.value = String(fit.weight);
-        syncFit();
-        toast("Tana rasmidan bo'y va vazn olindi");
-      } else toast("Tana rasmidan siluet topilmadi. Slayderdan sozlang.");
-    }
+  } else if (target.id === "fit-avatar" || target.id === "fit-face" || target.id === "fit-body-photo") {
+    const chosen = target.files ? [...target.files] : [];
+    const hint = target.id === "fit-face" ? "face" : target.id === "fit-body-photo" ? "body" : "auto";
+    target.value = "";
+    if (chosen.length) await applyAvatarFiles(chosen, hint);
   } else if (target.id === "fit-garment-top" || target.id === "fit-garment-bottom") {
     const file = target.files?.[0];
     target.value = "";
@@ -1215,18 +1297,8 @@ document.body.addEventListener("change", async (event) => {
         toast("Kiyim rasmi o'qilmadi");
       }
     }
-  } else if (target.id === "fit-face") {
-    const file = target.files?.[0];
-    if (file) {
-      const small = await shrinkFile(file);
-      const reader = new FileReader();
-      reader.onload = () => {
-        ensureFitState().face = String(reader.result || "");
-        fitApi?.update(fitPayload());
-      };
-      reader.readAsDataURL(small);
-    }
   } else if (target.id && target.id.startsWith("fit-")) {
+    if (target.id === "fit-skin") ensureFitState().skinHex = "";
     syncFit();
   } else if (target.id === "search") {
     state.q = target.value;

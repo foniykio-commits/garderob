@@ -10,7 +10,7 @@ from starlette.middleware.gzip import GZipMiddleware
 from .config import INBOX_DIR, ITEMS_DIR, ROOT, USING_POSTGRES
 from .constants import meta_dict
 from .database import Base, engine, ensure_schema
-from .routers import body, items, planner, profile, shop, stylist
+from .routers import avatar, body, items, planner, profile, shop, stylist
 from .services.images import rembg_available
 from .services.storage import cleanup_stored_inbox, cloudinary_enabled, get_blob, get_thumb
 
@@ -56,6 +56,7 @@ _prepare_dirs()
 app = FastAPI(title="Garderob", version="1.0.0", lifespan=lifespan)
 app.add_middleware(GZipMiddleware, minimum_size=256)
 app.include_router(body.router)
+app.include_router(avatar.router)
 app.include_router(profile.router)
 app.include_router(items.router)
 app.include_router(stylist.router)
