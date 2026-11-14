@@ -110,11 +110,27 @@ body.is-busy button { pointer-events: none; }
 }
 
 .filters { display: flex; gap: 8px; overflow: auto; padding-bottom: 4px; }
-.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; perspective: 1000px; }
 .cloth {
   text-align: left; padding: 8px; border-radius: 22px; border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.025); color: inherit; width: 100%;
+  background:
+    linear-gradient(160deg, rgba(255,255,255,.08), rgba(255,255,255,.02) 42%, rgba(0,0,0,.16));
+  color: inherit; width: 100%;
+  transform-style: preserve-3d;
+  transition: transform .16s ease, box-shadow .16s ease;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, .38), inset 0 1px 0 rgba(255, 255, 255, .18);
 }
+.cloth-photo { transform: translateZ(14px); filter: drop-shadow(0 12px 8px rgba(0, 0, 0, .32)); }
+.fit-stage {
+  height: min(68vh, 560px);
+  border-radius: 24px;
+  overflow: hidden;
+  touch-action: none;
+  background: radial-gradient(circle at 50% 18%, #3c342b, #12110f 72%);
+  border: 1px solid var(--line);
+}
+.fit-stage canvas { width: 100%; height: 100%; display: block; }
+input[type="range"] { width: 100%; accent-color: var(--gold); }
 .cloth b { display: block; margin-top: 8px; }
 .swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; border: 1px solid rgba(0,0,0,.25); vertical-align: middle; }
 .badge { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; font-size: 11px; background: rgba(224, 160, 138, 0.16); color: var(--warn); }

@@ -18,6 +18,7 @@ const state = {
   shopSubtype: "",
   loading: false,
   busy: false,
+  fit: null,
 };
 
 let meta = null;
@@ -36,6 +37,7 @@ const TITLES = {
   shop: ["Do'kon", "Xarid maslahati"],
   stats: ["Hisob", "Statistika"],
   profile: ["Siz", "Profil"],
+  fit: ["Maket", "3D kiyib ko'rish"],
 };
 
 function esc(value) {
@@ -94,7 +96,7 @@ function closeModal() {
 }
 
 function tabFor(view) {
-  if (["shop", "stats", "profile"].includes(view)) return "more";
+  if (["shop", "stats", "profile", "fit"].includes(view)) return "more";
   if (view === "add") return "wardrobe";
   return view;
 }
@@ -435,6 +437,65 @@ function viewProfile() {
   </form>`;
 }
 
+function bodyWord(value) {
+  if (value < 34) return "ozg'in";
+  if (value < 67) return "o'rtacha";
+  return "keng";
+}
+
+function clothChoices(categories, selected) {
+  const rows = [`<option value="">Tanlanmagan</option>`];
+  for (const item of items) {
+    if (!categories.includes(item.category)) continue;
+    rows.push(`<option value="${item.id}"${String(item.id) === String(selected) ? " selected" : ""}>${esc(item.name)}</option>`);
+  }
+  return rows.join("");
+}
+
+function ensureFitState() {
+  if (!state.fit) {
+    state.fit = {
+      height: Math.round(profile?.height_cm || 170),
+      body: 40,
+      skin: 2,
+      top: "",
+      bottom: "",
+      shoes: "",
+    };
+  }
+  return state.fit;
+}
+
+function fitPayload() {
+  const fit = ensureFitState();
+  const top = items.find((item) => String(item.id) === String(fit.top));
+  const bottom = items.find((item) => String(item.id) === String(fit.bottom));
+  const shoe = items.find((item) => String(item.id) === String(fit.shoes));
+  return {
+    height: fit.height,
+    body: fit.body,
+    skin: fit.skin,
+    topUrl: top?.image_url || "",
+    bottomUrl: bottom?.image_url || "",
+    shoeUrl: shoe?.image_url || "",
+    dress: top?.category === "dress",
+  };
+}
+
+function viewFit() {
+  const fit = ensureFitState();
+  return `<div class="stack">
+    <div id="fit-stage" class="fit-stage"><p class="boot">3D maket yuklanmoqda…</p></div>
+    <p class="note">Barmoq bilan 360° aylantiring, ikki barmoq bilan yaqinlashtiring. Three.js faqat shu sahifada yuklanadi.</p>
+    <label class="lbl">Bo'y, <span id="fit-height-label">${fit.height}</span> sm<input id="fit-height" type="range" min="150" max="200" value="${fit.height}"></label>
+    <label class="lbl">Tana: <span id="fit-body-label">${bodyWord(fit.body)}</span><input id="fit-body" type="range" min="0" max="100" value="${fit.body}"></label>
+    <label class="lbl">Teri rangi<input id="fit-skin" type="range" min="0" max="5" step="1" value="${fit.skin}"></label>
+    <label class="lbl">Ustki kiyim<select id="fit-top" class="field">${clothChoices(["top", "outerwear", "dress"], fit.top)}</select></label>
+    <label class="lbl">Pastki kiyim<select id="fit-bottom" class="field">${clothChoices(["bottom"], fit.bottom)}</select></label>
+    <label class="lbl">Oyoq kiyim<select id="fit-shoes" class="field">${clothChoices(["shoes"], fit.shoes)}</select></label>
+  </div>`;
+}
+
 const views = {
   home: viewHome,
   wardrobe: viewWardrobe,
@@ -444,6 +505,7 @@ const views = {
   shop: viewShop,
   stats: viewStats,
   profile: viewProfile,
+  fit: viewFit,
 };
 
 function sideHTML() {
@@ -452,6 +514,7 @@ function sideHTML() {
     ["wardrobe", "Garderob"],
     ["add", "Qo'shish"],
     ["stylist", "Stilist"],
+    ["fit", "3D Maket"],
     ["calendar", "Taqvim"],
     ["shop", "Xarid"],
     ["stats", "Statistika"],
@@ -470,13 +533,69 @@ function renderShell() {
   document.getElementById("tabbar").innerHTML = tabHTML();
 }
 
+let fitApi = null;
+let fitToken = 0;
+
+function stopFit() {
+  fitToken += 1;
+  if (!fitApi) return;
+  fitApi.dispose();
+  fitApi = null;
+}
+
+async function startFit() {
+  const token = ++fitToken;
+  const stage = document.getElementById("fit-stage");
+  if (!stage) return;
+  if (fitApi) {
+    fitApi.dispose();
+    fitApi = null;
+  }
+  try {
+    const room = await import("/assets/fit.js");
+    if (token !== fitToken || state.view !== "fit") return;
+    const live = document.getElementById("fit-stage");
+    if (!live) return;
+    live.textContent = "";
+    fitApi = room.mount(live, fitPayload());
+  } catch (error) {
+    if (token !== fitToken) return;
+    const live = document.getElementById("fit-stage");
+    if (live) live.innerHTML = `<p class="boot">3D maket ochilmadi. Internetni tekshiring.</p>`;
+    toast(error.message || "3D maket ochilmadi");
+  }
+}
+
+function syncFit() {
+  const fit = ensureFitState();
+  const height = document.getElementById("fit-height");
+  const body = document.getElementById("fit-body");
+  const skin = document.getElementById("fit-skin");
+  const top = document.getElementById("fit-top");
+  const bottom = document.getElementById("fit-bottom");
+  const shoes = document.getElementById("fit-shoes");
+  if (height) fit.height = Number(height.value);
+  if (body) fit.body = Number(body.value);
+  if (skin) fit.skin = Number(skin.value);
+  if (top) fit.top = top.value;
+  if (bottom) fit.bottom = bottom.value;
+  if (shoes) fit.shoes = shoes.value;
+  const heightLabel = document.getElementById("fit-height-label");
+  const bodyLabel = document.getElementById("fit-body-label");
+  if (heightLabel) heightLabel.textContent = String(fit.height);
+  if (bodyLabel) bodyLabel.textContent = bodyWord(fit.body);
+  fitApi?.update(fitPayload());
+}
+
 function render() {
+  if (state.view !== "fit") stopFit();
   const [kicker, title] = TITLES[state.view] || ["", ""];
   document.getElementById("topbar").innerHTML = `<div><p class="kicker">${kicker}</p><h1>${title}</h1></div>`;
   document.getElementById("view").innerHTML = views[state.view]();
   renderShell();
   const thread = document.getElementById("thread");
   if (thread) thread.scrollTop = thread.scrollHeight;
+  if (state.view === "fit") startFit();
 }
 
 async function go(view) {
@@ -656,6 +775,7 @@ document.body.addEventListener("click", async (event) => {
       openModal(`<div class="stack">
         <div class="spread"><h2>Yana</h2><button class="icon-btn" data-action="close-modal">×</button></div>
         <button class="btn" data-action="nav" data-view="add">Kiyim qo'shish</button>
+        <button class="btn" data-action="nav" data-view="fit">3D Maket</button>
         <button class="btn" data-action="nav" data-view="shop">Xarid maslahati</button>
         <button class="btn" data-action="nav" data-view="stats">Statistika</button>
         <button class="btn" data-action="nav" data-view="profile">Profil</button>
@@ -851,6 +971,8 @@ document.body.addEventListener("change", async (event) => {
   } else if (target.id === "edit-cat") {
     const select = document.getElementById("edit-sub");
     select.innerHTML = subtypeOptions(target.value, "");
+  } else if (target.id && target.id.startsWith("fit-")) {
+    syncFit();
   } else if (target.id === "search") {
     state.q = target.value;
     const grid = document.getElementById("grid");
@@ -861,7 +983,63 @@ document.body.addEventListener("change", async (event) => {
   }
 });
 
+function tiltCard(card, x, y) {
+  const rect = card.getBoundingClientRect();
+  const px = (x - rect.left) / rect.width - 0.5;
+  const py = (y - rect.top) / rect.height - 0.5;
+  card.style.transform = `rotateX(${(-py * 14).toFixed(2)}deg) rotateY(${(px * 16).toFixed(2)}deg) translateZ(8px)`;
+}
+
+let tiltTarget = null;
+let tiltAllowed = false;
+
+document.body.addEventListener("pointerdown", async (event) => {
+  const card = event.target.closest(".cloth");
+  if (!card) return;
+  tiltTarget = card;
+  tiltCard(card, event.clientX, event.clientY);
+  if (tiltAllowed) return;
+  tiltAllowed = true;
+  const orientation = window.DeviceOrientationEvent;
+  if (orientation && typeof orientation.requestPermission === "function") {
+    try { await orientation.requestPermission(); } catch (_error) { /* ruxsat berilmasa barmoq effekti qoladi */ }
+  }
+});
+
+document.body.addEventListener("pointermove", (event) => {
+  const card = tiltTarget || (event.pointerType !== "touch" ? event.target.closest(".cloth") : null);
+  if (!card) return;
+  tiltCard(card, event.clientX, event.clientY);
+});
+
+function resetTilt() {
+  if (!tiltTarget) return;
+  tiltTarget.style.transform = "";
+  tiltTarget = null;
+}
+
+document.body.addEventListener("pointerup", resetTilt);
+document.body.addEventListener("pointercancel", resetTilt);
+document.body.addEventListener("pointerleave", (event) => {
+  if (event.target.classList?.contains("cloth")) event.target.style.transform = "";
+});
+
+window.addEventListener("deviceorientation", (event) => {
+  if (tiltTarget || !tiltAllowed) return;
+  const grid = document.getElementById("grid");
+  if (!grid) return;
+  const x = Math.max(-10, Math.min(10, (event.gamma || 0) / 4));
+  const y = Math.max(-10, Math.min(10, ((event.beta || 40) - 40) / 5));
+  for (const card of grid.querySelectorAll(".cloth")) {
+    card.style.transform = `rotateX(${(-y).toFixed(2)}deg) rotateY(${x.toFixed(2)}deg) translateZ(6px)`;
+  }
+});
+
 document.body.addEventListener("input", (event) => {
+  if (event.target.id && event.target.id.startsWith("fit-")) {
+    syncFit();
+    return;
+  }
   if (event.target.id === "search") {
     state.q = event.target.value;
     const grid = document.getElementById("grid");
