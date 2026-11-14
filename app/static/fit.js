@@ -13,7 +13,7 @@ function blankTexture() {
 }
 
 function installBodyShader(material, blank, state) {
-  material.customProgramCacheKey = () => "anatomical-body-v1";
+  material.customProgramCacheKey = () => "anatomical-body-v2";
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uFat = { value: state.fat };
     shader.uniforms.uSpan = { value: state.span };
@@ -31,14 +31,14 @@ function installBodyShader(material, blank, state) {
       "#include <skinning_vertex>",
       `#include <skinning_vertex>
       float y01 = clamp((position.y - uFoot) / uSpan, 0.0, 1.0);
+      float axial = length(position.xz);
+      float core = 1.0 - smoothstep(0.14, 0.24, axial);
       float waist = smoothstep(0.46, 0.54, y01) * (1.0 - smoothstep(0.60, 0.68, y01));
       float torso = smoothstep(0.42, 0.50, y01) * (1.0 - smoothstep(0.78, 0.86, y01));
       float legs = smoothstep(0.06, 0.16, y01) * (1.0 - smoothstep(0.46, 0.54, y01));
-      float arms = smoothstep(0.50, 0.58, y01) * (1.0 - smoothstep(0.78, 0.86, y01));
-      float amount = uFat * (waist * 0.11 + torso * 0.055 + legs * 0.04 + arms * 0.035);
-      if (y01 > 0.86) amount *= 0.18;
+      float amount = uFat * core * (waist * 0.08 + torso * 0.04 + legs * 0.03);
+      if (y01 > 0.84) amount = 0.0;
       transformed += normalize(objectNormal) * amount;
-      transformed.x += uFat * torso * position.x * 0.06;
       vY01 = y01;
       vFront = objectNormal.z;
       vBind = position.xyz;`
@@ -215,7 +215,7 @@ export function mount(container, initial) {
     const weightKg = Math.min(180, Math.max(35, Number(next.weight) || 45 + ((Number(next.body) || 40) / 100) * 90));
     const meters = heightCm / 100;
     const bmi = weightKg / (meters * meters);
-    const fat = Math.max(-0.42, Math.min(0.95, (bmi - 22.5) / 14));
+    const fat = Math.max(-0.28, Math.min(0.9, (bmi - 22.5) / 12));
     const scale = meters / modelSpan;
     figure.scale.setScalar(scale);
     bodyState.fat = fat;
