@@ -78,6 +78,39 @@ export function mount(container, initial) {
   const calfL = part(calfGeo, skin, -0.09, 0.24, 0);
   const calfR = part(calfGeo, skin, 0.09, 0.24, 0);
   figure.add(head, neck, torso, hip, armL, armR, thighL, thighR, calfL, calfR);
+  const hairMat = new THREE.MeshStandardMaterial({ color: "#1a120e", roughness: 0.55 });
+  const capGeo = new THREE.SphereGeometry(0.145, 10, 8);
+  const sideGeo = new THREE.SphereGeometry(0.07, 8, 6);
+  const lockGeo = new THREE.BoxGeometry(0.07, 0.32, 0.04);
+  const bunGeo = new THREE.SphereGeometry(0.065, 8, 6);
+  function hairMesh(geometry, x, y, z) {
+    const mesh = new THREE.Mesh(geometry, hairMat);
+    mesh.position.set(x, y, z);
+    return mesh;
+  }
+  const hairStyles = {
+    short: new THREE.Group(),
+    medium: new THREE.Group(),
+    long: new THREE.Group(),
+    bun: new THREE.Group(),
+  };
+  hairStyles.short.add(hairMesh(capGeo, 0, 1.66, -0.01));
+  hairStyles.medium.add(hairMesh(capGeo, 0, 1.66, -0.01), hairMesh(sideGeo, -0.11, 1.5, 0), hairMesh(sideGeo, 0.11, 1.5, 0));
+  hairStyles.long.add(hairMesh(capGeo, 0, 1.66, -0.01), hairMesh(lockGeo, -0.09, 1.36, -0.05), hairMesh(lockGeo, 0.09, 1.36, -0.05));
+  hairStyles.bun.add(hairMesh(capGeo, 0, 1.64, -0.01), hairMesh(bunGeo, 0, 1.78, -0.03));
+  for (const group of Object.values(hairStyles)) {
+    group.visible = false;
+    figure.add(group);
+  }
+  let shownHair = "";
+  function applyHair(style, color) {
+    const name = hairStyles[style] ? style : "short";
+    if (name !== shownHair) {
+      shownHair = name;
+      for (const [key, group] of Object.entries(hairStyles)) group.visible = key === name;
+    }
+    hairMat.color.set(color || "#1a120e");
+  }
 
   const shirtTorso = part(new THREE.CylinderGeometry(0.185, 0.172, 0.46, 8), shirtMat, 0, 1.18, 0.02);
   const sleeveGeo = new THREE.CylinderGeometry(0.06, 0.052, 0.34, 8);
@@ -258,6 +291,7 @@ export function mount(container, initial) {
 
   applyShape(initial);
   applyFace(initial.faceUrl || "");
+  applyHair(initial.hair, initial.hairColor);
   applyClothes(initial);
   animate();
 
@@ -265,6 +299,7 @@ export function mount(container, initial) {
     update(next) {
       applyShape(next);
       applyFace(next.faceUrl || "");
+      applyHair(next.hair, next.hairColor);
       applyClothes(next);
     },
     dispose() {

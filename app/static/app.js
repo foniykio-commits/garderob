@@ -184,6 +184,49 @@ async function shrinkFile(file) {
   }
 }
 
+async function measureBody(file) {
+  try {
+    const small = await shrinkFile(file);
+    const image = await createImageBitmap(small);
+    const canvas = document.createElement("canvas");
+    canvas.width = 64;
+    canvas.height = 128;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(image, 0, 0, 64, 128);
+    if (image.close) image.close();
+    const pixels = context.getImageData(0, 0, 64, 128).data;
+    const background = [pixels[0], pixels[1], pixels[2]];
+    const rows = [];
+    for (let y = 0; y < 128; y += 1) {
+      let left = 64;
+      let right = 0;
+      let count = 0;
+      for (let x = 0; x < 64; x += 1) {
+        const index = (y * 64 + x) * 4;
+        const distance = Math.abs(pixels[index] - background[0]) + Math.abs(pixels[index + 1] - background[1]) + Math.abs(pixels[index + 2] - background[2]);
+        if (distance > 48) {
+          count += 1;
+          left = Math.min(left, x);
+          right = Math.max(right, x);
+        }
+      }
+      rows.push(count > 3 ? right - left : 0);
+    }
+    const filled = rows.map((width, index) => (width > 0 ? index : -1)).filter((index) => index >= 0);
+    if (filled.length < 24) return null;
+    const top = filled[0];
+    const bottom = filled[filled.length - 1];
+    const span = Math.max(1, bottom - top);
+    const at = (ratio) => rows[Math.min(127, top + Math.round(span * ratio))] || 1;
+    const width = (at(0.2) + at(0.5)) / 2;
+    const weight = Math.round(Math.max(45, Math.min(130, 46 + (width / 64) * 78)));
+    const height = Math.round(Math.max(155, Math.min(195, 148 + (span / Math.max(width, 1)) * 14)));
+    return { height, weight };
+  } catch (_error) {
+    return null;
+  }
+}
+
 function lockUi(button) {
   state.busy = true;
   document.body.classList.add("is-busy");
@@ -252,6 +295,11 @@ function dockHTML() {
       <label>Vazn <b id="fit-weight-label">${fit.weight}</b><input id="fit-weight" type="range" min="40" max="140" value="${fit.weight}"></label>
       <label>Teri<input id="fit-skin" type="range" min="0" max="5" step="1" value="${fit.skin}"></label>
       <label class="face-btn">Yuz<input id="fit-face" hidden type="file" accept="image/*" capture="user"></label>
+      <label class="face-btn">Tana<input id="fit-body-photo" hidden type="file" accept="image/*"></label>
+    </div>
+    <div class="hair-row">
+      ${[["short", "Kalta"], ["medium", "O'rta"], ["long", "Uzun"], ["bun", "Yig'ilgan"]].map(([key, label]) => `<button type="button" class="chip${fit.hair === key ? " on" : ""}" data-action="set-hair" data-hair="${key}">${label}</button>`).join("")}
+      ${[["#1a120e", "Qora"], ["#6b3e26", "Jigarrang"], ["#c6a15b", "Malla"], ["#8d3b2a", "Qizil"]].map(([color, label]) => `<button type="button" class="chip hair-dot${fit.hairColor === color ? " on" : ""}" data-action="set-hair-color" data-color="${color}" style="--dot:${color}">${label}</button>`).join("")}
     </div>
     <div class="rail-switch">
       <button class="chip on" type="button" data-action="show-rail" data-rail="top">Ustki</button>
@@ -267,6 +315,7 @@ function dockHTML() {
 function viewHome() {
   return `<div class="stage">
     <button class="stage-more" data-action="more" type="button" aria-label="Menyu">⋯</button>
+    <p id="stage-advice" class="stage-advice"></p>
     <div id="fit-stage" class="fit-stage"><p class="boot">3D xona ochilmoqda…</p></div>
     <div class="stage-dock">${dockHTML()}</div>
   </div>`;
@@ -472,12 +521,42 @@ function ensureFitState() {
       weight: Math.round(profile?.weight_kg || 70),
       skin: 2,
       face: "",
+      hair: "short",
+      hairColor: "#1a120e",
+      fromBody: false,
       top: "",
       bottom: "",
       shoes: "",
     };
   }
+  state.fit.hair = state.fit.hair || "short";
+  state.fit.hairColor = state.fit.hairColor || "#1a120e";
   return state.fit;
+}
+
+function stageAdvice() {
+  const fit = ensureFitState();
+  const top = items.find((item) => String(item.id) === String(fit.top));
+  const bottom = items.find((item) => String(item.id) === String(fit.bottom));
+  const shoe = items.find((item) => String(item.id) === String(fit.shoes));
+  const hairName = { short: "kalta soch", medium: "o'rta soch", long: "uzun soch", bun: "yig'ilgan soch" }[fit.hair] || "soch";
+  const bits = [];
+  if (fit.fromBody) bits.push(`Tana rasming bo'yicha maket taxminan ${fit.height} sm va ${fit.weight} kg ga yaqinlashtirildi.`);
+  if (!top && !bottom && !shoe) {
+    bits.push("Karuseldan kiyimni sur yoki bos — stilist shu zahoti aytadi.");
+    return bits.join(" ");
+  }
+  if (top) bits.push(`${top.name} senga juda mos tushadi.`);
+  if (bottom) bits.push(`${bottom.name} tana chizig'ini yaxshi ushlaydi.`);
+  if (shoe && top) bits.push(`${shoe.name} bilan bu obraz mukammal chiqadi.`);
+  else if (!shoe) bits.push("Oyoq kiyim qo'shsang, obraz yanada to'liq chiqadi.");
+  if (top) bits.push(`${hairName[0].toUpperCase()}${hairName.slice(1)} bilan bu ustki kiyim bir-biriga tushadi.`);
+  return bits.join(" ");
+}
+
+function paintAdvice() {
+  const node = document.getElementById("stage-advice");
+  if (node) node.textContent = stageAdvice();
 }
 
 function fitPayload() {
@@ -491,6 +570,8 @@ function fitPayload() {
     body: Math.round(Math.max(0, Math.min(100, ((weight - 45) / 90) * 100))),
     skin: fit.skin,
     faceUrl: fit.face || "",
+    hair: fit.hair,
+    hairColor: fit.hairColor,
     topUrl: top?.image_url || "",
     bottomUrl: bottom?.image_url || "",
     shoeUrl: shoe?.image_url || "",
@@ -579,6 +660,7 @@ function syncFit() {
   if (heightLabel) heightLabel.textContent = String(fit.height);
   if (weightLabel) weightLabel.textContent = String(fit.weight);
   fitApi?.update(fitPayload());
+  paintAdvice();
 }
 
 function bindRails() {
@@ -607,6 +689,7 @@ function bindRails() {
         fit[best.dataset.slot] = best.dataset.id;
         rail.querySelectorAll(".rail-card").forEach((card) => card.classList.toggle("on", card === best));
         fitApi?.update(fitPayload());
+        paintAdvice();
       }, 90);
     }, { passive: true });
   });
@@ -622,6 +705,7 @@ function render() {
     renderShell();
     bindRails();
     fitApi?.update(fitPayload());
+    paintAdvice();
     return;
   }
   const [kicker, title] = TITLES[state.view] || ["", ""];
@@ -633,6 +717,7 @@ function render() {
   if (state.view === "home") {
     startFit();
     bindRails();
+    paintAdvice();
   }
 }
 
@@ -799,7 +884,7 @@ document.body.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button || state.busy) return;
   const action = button.dataset.action;
-  const instant = new Set(["more", "close-modal", "open-item", "set-cat", "toggle-forgotten", "remove-pending", "pick-day", "toggle-pick", "wear", "show-rail"]);
+  const instant = new Set(["more", "close-modal", "open-item", "set-cat", "toggle-forgotten", "remove-pending", "pick-day", "toggle-pick", "wear", "show-rail", "set-hair", "set-hair-color"]);
   if (!instant.has(action)) lockUi(button);
   try {
     if (action === "nav") {
@@ -827,6 +912,19 @@ document.body.addEventListener("click", async (event) => {
       fit[slot] = String(fit[slot]) === String(button.dataset.id) ? "" : button.dataset.id;
       button.parentElement?.querySelectorAll(".rail-card").forEach((card) => card.classList.toggle("on", String(card.dataset.id) === String(fit[slot])));
       fitApi?.update(fitPayload());
+      paintAdvice();
+    } else if (action === "set-hair") {
+      const fit = ensureFitState();
+      fit.hair = button.dataset.hair;
+      document.querySelectorAll("[data-action='set-hair']").forEach((node) => node.classList.toggle("on", node.dataset.hair === fit.hair));
+      fitApi?.update(fitPayload());
+      paintAdvice();
+    } else if (action === "set-hair-color") {
+      const fit = ensureFitState();
+      fit.hairColor = button.dataset.color;
+      document.querySelectorAll("[data-action='set-hair-color']").forEach((node) => node.classList.toggle("on", node.dataset.color === fit.hairColor));
+      fitApi?.update(fitPayload());
+      paintAdvice();
     } else if (action === "open-item") openItem(button.dataset.id);
     else if (action === "save-item") await saveItem(button.dataset.id);
     else if (action === "delete-item") {
@@ -1017,6 +1115,23 @@ document.body.addEventListener("change", async (event) => {
   } else if (target.id === "edit-cat") {
     const select = document.getElementById("edit-sub");
     select.innerHTML = subtypeOptions(target.value, "");
+  } else if (target.id === "fit-body-photo") {
+    const file = target.files?.[0];
+    if (file) {
+      const measured = await measureBody(file);
+      const fit = ensureFitState();
+      if (measured) {
+        fit.height = measured.height;
+        fit.weight = measured.weight;
+        fit.fromBody = true;
+        const height = document.getElementById("fit-height");
+        const weight = document.getElementById("fit-weight");
+        if (height) height.value = String(fit.height);
+        if (weight) weight.value = String(fit.weight);
+        syncFit();
+        toast("Tana rasmidan bo'y va vazn olindi");
+      } else toast("Tana rasmidan siluet topilmadi. Slayderdan sozlang.");
+    }
   } else if (target.id === "fit-face") {
     const file = target.files?.[0];
     if (file) {

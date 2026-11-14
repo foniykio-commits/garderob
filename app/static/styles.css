@@ -142,9 +142,17 @@ body.on-stage #view { flex: 1; min-height: 0; }
 .stage-sliders b { color: var(--ink); font-weight: 650; }
 .face-btn { border: 1px solid var(--line); border-radius: 999px; padding: 8px 12px; color: var(--ink); text-align: center; }
 .rail-switch { display: flex; gap: 8px; margin: 8px 0 6px; }
-.rail { display: flex; gap: 8px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 8px; }
-.rail-card { flex: 0 0 92px; width: 92px; scroll-snap-align: center; }
-.rail-card.on { outline: 2px solid var(--gold); }
+.rail { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-behavior: smooth; padding: 8px 18px 12px; perspective: 700px; }
+.rail-card { flex: 0 0 96px; width: 96px; scroll-snap-align: center; transform: scale(.9); transition: transform .28s ease, box-shadow .28s ease; }
+.rail-card.on { outline: 2px solid var(--gold); transform: scale(1.06) translateY(-4px); box-shadow: 0 18px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.2); }
+.stage-advice {
+  position: absolute; z-index: 5; left: 12px; top: calc(12px + env(safe-area-inset-top));
+  max-width: min(280px, calc(100% - 72px)); margin: 0; padding: 10px 12px; border-radius: 16px;
+  background: rgba(18, 17, 15, .78); border: 1px solid var(--line); color: var(--ink); font-size: 13px; line-height: 1.35;
+}
+.hair-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; }
+.hair-dot::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--dot); display: inline-block; margin-right: 4px; }
+.stage-sliders { grid-template-columns: 1fr 1fr .7fr auto auto; }
 .rail-wrap.hidden { display: none; }
 .stage-more {
   position: absolute; z-index: 6; top: calc(10px + env(safe-area-inset-top)); right: 12px;
