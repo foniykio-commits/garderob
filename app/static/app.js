@@ -555,8 +555,7 @@ function railCards(slot, categories) {
   const upload = slot === "shoes" ? "" : `<label class="circle-pick"><span class="circle-cell">${circleGlyph("plus")}<input id="${slot === "top" ? "fit-garment-top" : "fit-garment-bottom"}" hidden type="file" accept="image/*"></span><span class="circle-label">Rasm</span></label>`;
   const add = `<button type="button" class="circle-pick" data-action="nav" data-view="add"><span class="circle-cell">${circleGlyph("plus")}</span><span class="circle-label">Qo'shish</span></button>`;
   const cards = list.map((item) => `<button type="button" class="circle-pick rail-card${String(item.id) === String(fit[slot]) ? " on" : ""}" data-action="wear" data-slot="${slot}" data-id="${item.id}" aria-label="${esc(item.name)}"><span class="circle-cell circle-photo">${photo(item)}</span><span class="circle-label">${esc(item.name)}</span></button>`).join("");
-  const grid = list.length > 4 ? " gridish" : "";
-  return `<div class="rail circle-rail${grid}" data-slot="${slot}">${add}${upload}${cards || ""}</div>`;
+  return `<div class="rail circle-rail" data-slot="${slot}">${add}${upload}${cards || ""}</div>`;
 }
 
 function dockHTML() {
@@ -591,17 +590,19 @@ function dockHTML() {
       </div>
       <div class="look-pane${state.lookRail === "glasses" ? "" : " hidden"}" data-look="glasses"><div class="circle-rail">${glasses}</div></div>
       <div class="look-pane${state.lookRail === "skin" ? "" : " hidden"}" data-look="skin"><div class="circle-rail">${skins}</div></div>
-      <div class="stage-sliders">
-        <label>Bo'y <b id="fit-height-label">${fit.height}</b><input id="fit-height" type="range" min="150" max="200" value="${fit.height}"></label>
-        <label>Vazn <b id="fit-weight-label">${fit.weight}</b><input id="fit-weight" type="range" min="40" max="140" value="${fit.weight}"></label>
-      </div>
-      <div class="hair-row">${poses}<button type="button" class="chip" data-action="download-projections">3D</button></div>
     </div>
     <div class="galaxy-pane${look ? " hidden" : ""}" data-pane="style">
       <div class="galaxy-cats">${styleCats}</div>
       <div class="rail-wrap${state.styleRail === "top" ? "" : " hidden"}" data-rail="top">${railCards("top", ["top", "outerwear", "dress"])}</div>
       <div class="rail-wrap${state.styleRail === "bottom" ? "" : " hidden"}" data-rail="bottom">${railCards("bottom", ["bottom"])}</div>
       <div class="rail-wrap${state.styleRail === "shoes" ? "" : " hidden"}" data-rail="shoes">${railCards("shoes", ["shoes"])}</div>
+    </div>
+    <div class="dock-controls">
+      <div class="stage-sliders">
+        <label>Bo'y <b id="fit-height-label">${fit.height}</b><input id="fit-height" type="range" min="150" max="200" value="${fit.height}"></label>
+        <label>Vazn <b id="fit-weight-label">${fit.weight}</b><input id="fit-weight" type="range" min="40" max="140" value="${fit.weight}"></label>
+      </div>
+      <div class="hair-row">${poses}<button type="button" class="chip" data-action="download-projections">3D</button></div>
     </div>`;
 }
 
