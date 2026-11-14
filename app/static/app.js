@@ -287,19 +287,74 @@ async function cutGarment(file) {
   return canvas.toDataURL("image/png");
 }
 
-async function cropFace(file, box) {
+function clearBackdrop(context, width, height) {
+  const image = context.getImageData(0, 0, width, height);
+  const pixels = image.data;
+  const corners = [0, width - 1, (height - 1) * width, (height - 1) * width + (width - 1)];
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  for (const cursor of corners) {
+    red += pixels[cursor * 4];
+    green += pixels[cursor * 4 + 1];
+    blue += pixels[cursor * 4 + 2];
+  }
+  red /= 4;
+  green /= 4;
+  blue /= 4;
+  const seen = new Uint8Array(width * height);
+  const queue = corners.slice();
+  for (const start of queue) seen[start] = 1;
+  let head = 0;
+  while (head < queue.length) {
+    const cursor = queue[head];
+    head += 1;
+    const x = cursor % width;
+    const index = cursor * 4;
+    const distance = Math.abs(pixels[index] - red) + Math.abs(pixels[index + 1] - green) + Math.abs(pixels[index + 2] - blue);
+    if (distance > 48) continue;
+    pixels[index + 3] = 0;
+    const nexts = [cursor - width, cursor + width];
+    if (x > 0) nexts.push(cursor - 1);
+    if (x < width - 1) nexts.push(cursor + 1);
+    for (const next of nexts) {
+      if (next < 0 || next >= seen.length || seen[next]) continue;
+      seen[next] = 1;
+      queue.push(next);
+    }
+  }
+  context.putImageData(image, 0, 0);
+}
+
+async function paintPortrait(file, box, features) {
   const bitmap = await createImageBitmap(file);
-  const x = Math.max(0, box.x * bitmap.width);
-  const y = Math.max(0, box.y * bitmap.height);
-  const width = Math.max(1, Math.min(bitmap.width - x, box.w * bitmap.width));
-  const height = Math.max(1, Math.min(bitmap.height - y, box.h * bitmap.height));
   const canvas = document.createElement("canvas");
-  canvas.width = 256;
-  canvas.height = 320;
-  const context = canvas.getContext("2d");
-  context.drawImage(bitmap, x, y, width, height, 0, 0, 256, 320);
+  canvas.width = 512;
+  canvas.height = 640;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  const eyes = (features || []).filter((item) => item.name === "eye");
+  if (eyes.length >= 2) {
+    const ax = eyes[0].x * bitmap.width;
+    const ay = eyes[0].y * bitmap.height;
+    const bx = eyes[1].x * bitmap.width;
+    const by = eyes[1].y * bitmap.height;
+    const gap = Math.max(8, Math.hypot(ax - bx, ay - by));
+    const scale = (512 * 0.3) / gap;
+    const midX = (ax + bx) / 2;
+    const midY = (ay + by) / 2;
+    context.drawImage(bitmap, 256 - midX * scale, 294 - midY * scale, bitmap.width * scale, bitmap.height * scale);
+  } else if (box) {
+    const x = Math.max(0, box.x * bitmap.width);
+    const y = Math.max(0, box.y * bitmap.height);
+    const width = Math.max(1, Math.min(bitmap.width - x, box.w * bitmap.width));
+    const height = Math.max(1, Math.min(bitmap.height - y, box.h * bitmap.height));
+    context.drawImage(bitmap, x, y, width, height, 0, 0, 512, 640);
+  } else {
+    context.drawImage(bitmap, 0, 0, 512, 640);
+  }
   if (bitmap.close) bitmap.close();
-  return canvas.toDataURL("image/jpeg", 0.86);
+  clearBackdrop(context, 512, 640);
+  return canvas.toDataURL("image/png");
 }
 
 async function readAvatar(files, hint) {
@@ -350,9 +405,13 @@ async function applyAvatarFiles(fileList, hint) {
     fit.shoulder = result.shoulder || 1;
     fit.hips = result.hips || 1;
   }
+  const eyes = (result.features || []).filter((item) => item.name === "eye").length;
+  fit.agentNote = eyes
+    ? `Agent ko'zlarni topdi va yuzni shu chiziqqa qo'ydi. Teri ${result.skin_hex}.`
+    : `Agent terini ${result.skin_hex} qilib oldi.`;
   if (result.face_box && Number.isInteger(result.face_index)) {
     try {
-      fit.face = await cropFace(files[result.face_index], result.face_box);
+      fit.face = await paintPortrait(files[result.face_index], result.face_box, result.features);
     } catch (_error) {
       /* yuz kesimi tushmasa tana rangi baribir qo'llanadi */
     }
@@ -365,8 +424,8 @@ async function applyAvatarFiles(fileList, hint) {
   if (skin) skin.value = String(fit.skin);
   syncFit();
   const kinds = new Set((result.reads || []).map((row) => row.kind));
-  if (kinds.has("body") || kinds.has("side")) toast("Yuz, teri va qomat rasmdan olindi");
-  else toast("Yuz va teri rangi avatarga yopishtirildi");
+  if (kinds.has("body") || kinds.has("side")) toast("Avatar agent tanani shu odamga yaqinlashtirdi");
+  else toast("Avatar agent yuz va terini qo'ydi");
 }
 
 async function measureBody(file) {
@@ -487,6 +546,7 @@ function dockHTML() {
     </div>
     <div class="hair-row">
       ${[["rest", "Tinch"], ["wave", "Salom"], ["walk", "Yurish"], ["sit", "O'tirish"]].map(([key, label]) => `<button type="button" class="chip${fit.pose === key ? " on" : ""}" data-action="set-pose" data-pose="${key}">${label}</button>`).join("")}
+      <button type="button" class="chip" data-action="open-avatar-agent">Avatar agent</button>
       <button type="button" class="chip" data-action="download-projections">3D agent</button>
     </div>
     <div class="hair-row">
@@ -746,7 +806,7 @@ function stageAdvice() {
   const shoe = items.find((item) => String(item.id) === String(fit.shoes));
   const hairName = { short: "kalta soch", medium: "o'rta soch", long: "uzun soch", bun: "yig'ilgan soch" }[fit.hair] || "soch";
   const bits = [];
-  if (fit.fromAvatar) bits.push(`Avatar rasmingdan teri va qomat olindi: taxminan ${fit.height} sm, ${fit.weight} kg.`);
+  if (fit.fromAvatar) bits.push(fit.agentNote || `Avatar rasmingdan teri va qomat olindi: taxminan ${fit.height} sm, ${fit.weight} kg.`);
   else if (fit.fromBody) bits.push(`Tana rasming bo'yicha maket taxminan ${fit.height} sm va ${fit.weight} kg ga yaqinlashtirildi.`);
   if (!top && !bottom && !shoe) {
     bits.push("Karuseldan kiyimni sur yoki bos — stilist shu zahoti aytadi.");
@@ -1130,6 +1190,22 @@ document.body.addEventListener("click", async (event) => {
       document.querySelectorAll("[data-action='set-hair']").forEach((node) => node.classList.toggle("on", node.dataset.hair === fit.hair));
       fitApi?.update(fitPayload());
       paintAdvice();
+    } else if (action === "open-avatar-agent") {
+      openModal(`<div class="stack">
+        <p class="kicker">Avatar agent</p>
+        <h2>Shu odamga o'xshash 3D</h2>
+        <p>Yuz, butun tana yoki yon tomondan rasm yuboring. Agent ko'z chizig'i, teri rangi, soch va qomatni o'qib, tanani shunga yaqinlashtiradi.</p>
+        <label class="lbl">Rasmlar<input id="agent-photos" class="field" type="file" accept="image/*" multiple></label>
+        <button class="btn primary" type="button" data-action="run-avatar-agent">Avatar yasash</button>
+      </div>`);
+    } else if (action === "run-avatar-agent") {
+      const chosen = document.getElementById("agent-photos")?.files;
+      if (!chosen?.length) {
+        toast("Kamida bitta rasm tanlang");
+        return;
+      }
+      closeModal();
+      await applyAvatarFiles(chosen, "auto");
     } else if (action === "download-projections") {
       if (!fitApi?.projections) {
         toast("3D xona hali ochilmadi");

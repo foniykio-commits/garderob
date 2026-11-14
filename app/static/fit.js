@@ -13,7 +13,7 @@ function blankTexture() {
 }
 
 function installBodyShader(material, blank, state) {
-  material.customProgramCacheKey = () => "anatomical-body-v4";
+  material.customProgramCacheKey = () => "anatomical-body-v6";
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uFat = { value: state.fat };
     shader.uniforms.uSpan = { value: state.span };
@@ -51,10 +51,13 @@ function installBodyShader(material, blank, state) {
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <map_fragment>",
       `#include <map_fragment>
-      if (uHasFace > 0.5 && vY01 > 0.84 && vFront > 0.25) {
-        vec2 faceUv = clamp(vec2(vBind.x / 0.11 + 0.5, (vY01 - 0.84) / 0.16), 0.0, 1.0);
-        vec3 face = texture2D(uFaceMap, faceUv).rgb;
-        diffuseColor.rgb = mix(diffuseColor.rgb, face, smoothstep(0.25, 0.75, vFront));
+      if (uHasFace > 0.5 && vY01 > 0.84 && vFront > 0.2) {
+        vec2 faceUv = vec2(vBind.x / 0.11 + 0.5, (vY01 - 0.84) / 0.16);
+        vec4 face = texture2D(uFaceMap, clamp(faceUv, 0.0, 1.0));
+        float edge = smoothstep(0.0, 0.06, faceUv.x) * smoothstep(0.0, 0.06, 1.0 - faceUv.x);
+        edge *= smoothstep(0.0, 0.04, faceUv.y) * smoothstep(0.0, 0.05, 1.0 - faceUv.y);
+        float cover = edge * smoothstep(0.2, 0.75, vFront) * smoothstep(0.15, 0.55, face.a);
+        diffuseColor.rgb = mix(diffuseColor.rgb, face.rgb, cover);
       }`
     );
     material.userData.shader = shader;
