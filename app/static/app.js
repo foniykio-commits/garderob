@@ -536,83 +536,22 @@ function clothCard(item) {
   </button>`;
 }
 
-const SKIN_DOTS = ["#f3d3bf", "#e7b892", "#c68642", "#8d5524", "#5c3317", "#3b2214"];
-
-function circleGlyph(kind) {
-  const paths = {
-    short: `<path d="M16 28c0-8 6-14 16-14s16 6 16 14v2H16z" fill="currentColor"/>`,
-    medium: `<path d="M14 30c1-12 8-18 18-18s17 6 18 18c-4 2-8-4-18-4s-14 6-18 4z" fill="currentColor"/>`,
-    long: `<path d="M16 18c0-6 6-10 16-10s16 4 16 10c2 8-2 20-6 24h-4c2-6 2-12 0-16-4 2-8 2-12 0-2 4-2 10 0 16h-4c-4-4-8-16-6-24z" fill="currentColor"/>`,
-    bun: `<circle cx="32" cy="16" r="6" fill="currentColor"/><path d="M16 30c0-8 6-12 16-12s16 4 16 12v2H16z" fill="currentColor"/>`,
-    face: `<circle cx="32" cy="28" r="12" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="27" cy="26" r="1.4" fill="currentColor"/><circle cx="37" cy="26" r="1.4" fill="currentColor"/>`,
-    none: `<path d="M18 18l28 28M46 18L18 46" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>`,
-    round: `<circle cx="24" cy="32" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="40" cy="32" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M31 32h2" stroke="currentColor" stroke-width="2"/>`,
-    square: `<rect x="16" y="25" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2.2"/><rect x="35" y="25" width="13" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2.2"/>`,
-    sun: `<circle cx="24" cy="32" r="7" fill="currentColor"/><circle cx="40" cy="32" r="7" fill="currentColor"/><path d="M31 32h2" stroke="currentColor" stroke-width="2"/>`,
-    plus: `<path d="M32 20v24M20 32h24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>`,
-  };
-  return `<svg viewBox="0 0 64 64" aria-hidden="true">${paths[kind] || paths.plus}</svg>`;
-}
-
-function circleChoice(action, key, label, glyph, on, extra = "") {
-  return `<button type="button" class="circle-pick${on ? " on" : ""}" data-action="${action}" ${extra}><span class="circle-cell">${circleGlyph(glyph)}</span><span class="circle-label">${label}</span></button>`;
-}
-
 function railCards(slot, categories) {
   const fit = ensureFitState();
   const list = items.filter((item) => categories.includes(item.category));
-  const upload = slot === "shoes" ? "" : `<label class="circle-pick"><span class="circle-cell">${circleGlyph("plus")}<input id="${slot === "top" ? "fit-garment-top" : "fit-garment-bottom"}" hidden type="file" accept="image/*"></span><span class="circle-label">Rasm</span></label>`;
-  const add = `<button type="button" class="circle-pick" data-action="nav" data-view="add"><span class="circle-cell">${circleGlyph("plus")}</span><span class="circle-label">Qo'shish</span></button>`;
+  if (!list.length) return `<button type="button" class="dock-empty" data-action="nav" data-view="add">Kiyim qo'shish</button>`;
   const cards = list.map((item) => `<button type="button" class="circle-pick rail-card${String(item.id) === String(fit[slot]) ? " on" : ""}" data-action="wear" data-slot="${slot}" data-id="${item.id}" aria-label="${esc(item.name)}"><span class="circle-cell circle-photo">${photo(item)}</span><span class="circle-label">${esc(item.name)}</span></button>`).join("");
-  return `<div class="rail circle-rail" data-slot="${slot}">${add}${upload}${cards || ""}</div>`;
+  return `<div class="rail circle-rail" data-slot="${slot}">${cards}</div>`;
 }
 
 function dockHTML() {
-  const fit = ensureFitState();
-  const look = state.dockTab === "look";
-  const hair = [
-    ["short", "Kalta", "short"],
-    ["medium", "O'rta", "medium"],
-    ["long", "Uzun", "long"],
-    ["bun", "Yig'ilgan", "bun"],
-  ].map(([key, label, glyph]) => circleChoice("set-hair", key, label, glyph, fit.hair === key, `data-hair="${key}"`)).join("");
-  const colors = [["#1a120e", "Qora"], ["#6b3e26", "Jigarrang"], ["#c6a15b", "Malla"], ["#8d3b2a", "Qizil"], ["#d7d2cb", "Oq"]].map(([color, label]) => `<button type="button" class="circle-pick${fit.hairColor === color ? " on" : ""}" data-action="set-hair-color" data-color="${color}"><span class="circle-cell swatch-cell" style="--dot:${color}"></span><span class="circle-label">${label}</span></button>`).join("");
-  const glasses = [["none", "Yo'q", "none"], ["round", "Dumaloq", "round"], ["square", "To'rtburchak", "square"], ["sun", "Quyosh", "sun"]].map(([key, label, glyph]) => circleChoice("set-glasses", key, label, glyph, (fit.glasses || "none") === key, `data-glasses="${key}"`)).join("");
-  const skins = SKIN_DOTS.map((color, index) => `<button type="button" class="circle-pick${Number(fit.skin) === index && !fit.skinHex ? " on" : ""}" data-action="set-skin" data-skin="${index}"><span class="circle-cell swatch-cell" style="--dot:${color}"></span><span class="circle-label">${index + 1}</span></button>`).join("");
-  const poses = [["rest", "Tinch"], ["wave", "Salom"], ["walk", "Yurish"], ["sit", "O'tirish"]].map(([key, label]) => `<button type="button" class="chip${fit.pose === key ? " on" : ""}" data-action="set-pose" data-pose="${key}">${label}</button>`).join("");
-  const lookCats = [["hair", "Soch"], ["face", "Yuz"], ["glasses", "Ko'zoynak"], ["skin", "Teri"]].map(([key, label]) => `<button type="button" class="galaxy-cat${state.lookRail === key ? " on" : ""}" data-action="set-look" data-look="${key}">${label}</button>`).join("");
-  const styleCats = [["top", "Ustki"], ["bottom", "Shim"], ["shoes", "Poyabzal"]].map(([key, label]) => `<button type="button" class="galaxy-cat${state.styleRail === key ? " on" : ""}" data-action="show-rail" data-rail="${key}">${label}</button>`).join("");
-  return `<div class="galaxy-tabs">
-      <button type="button" class="galaxy-tab${look ? " on" : ""}" data-action="set-dock" data-dock="look">Ko'rinish</button>
-      <button type="button" class="galaxy-tab${look ? "" : " on"}" data-action="set-dock" data-dock="style">Uslub</button>
-    </div>
-    <div class="galaxy-pane${look ? "" : " hidden"}" data-pane="look">
-      <div class="galaxy-cats">${lookCats}</div>
-      <div class="look-pane${state.lookRail === "hair" ? "" : " hidden"}" data-look="hair"><div class="circle-rail">${hair}${colors}</div></div>
-      <div class="look-pane${state.lookRail === "face" ? "" : " hidden"}" data-look="face">
-        <div class="circle-rail">
-          <label class="circle-pick"><span class="circle-cell">${circleGlyph("face")}<input id="fit-face" hidden type="file" accept="image/*" capture="user"></span><span class="circle-label">Yuz rasmi</span></label>
-          <label class="circle-pick"><span class="circle-cell">${circleGlyph("face")}<input id="fit-avatar" hidden type="file" accept="image/*" multiple></span><span class="circle-label">Avatar</span></label>
-          <label class="circle-pick"><span class="circle-cell">${circleGlyph("plus")}<input id="fit-body-photo" hidden type="file" accept="image/*"></span><span class="circle-label">Tana</span></label>
-          <button type="button" class="circle-pick" data-action="open-avatar-agent"><span class="circle-cell">${circleGlyph("face")}</span><span class="circle-label">Agent</span></button>
-        </div>
-      </div>
-      <div class="look-pane${state.lookRail === "glasses" ? "" : " hidden"}" data-look="glasses"><div class="circle-rail">${glasses}</div></div>
-      <div class="look-pane${state.lookRail === "skin" ? "" : " hidden"}" data-look="skin"><div class="circle-rail">${skins}</div></div>
-    </div>
-    <div class="galaxy-pane${look ? " hidden" : ""}" data-pane="style">
-      <div class="galaxy-cats">${styleCats}</div>
-      <div class="rail-wrap${state.styleRail === "top" ? "" : " hidden"}" data-rail="top">${railCards("top", ["top", "outerwear", "dress"])}</div>
-      <div class="rail-wrap${state.styleRail === "bottom" ? "" : " hidden"}" data-rail="bottom">${railCards("bottom", ["bottom"])}</div>
-      <div class="rail-wrap${state.styleRail === "shoes" ? "" : " hidden"}" data-rail="shoes">${railCards("shoes", ["shoes"])}</div>
-    </div>
-    <div class="dock-controls">
-      <div class="stage-sliders">
-        <label>Bo'y <b id="fit-height-label">${fit.height}</b><input id="fit-height" type="range" min="150" max="200" value="${fit.height}"></label>
-        <label>Vazn <b id="fit-weight-label">${fit.weight}</b><input id="fit-weight" type="range" min="40" max="140" value="${fit.weight}"></label>
-      </div>
-      <div class="hair-row">${poses}<button type="button" class="chip" data-action="download-projections">3D</button></div>
-    </div>`;
+  const cats = [["top", "Ustki"], ["bottom", "Shim"], ["shoes", "Poyabzal"]]
+    .map(([key, label]) => `<button type="button" class="galaxy-cat${state.styleRail === key ? " on" : ""}" data-action="show-rail" data-rail="${key}">${label}</button>`)
+    .join("");
+  return `<div class="galaxy-cats">${cats}</div>
+    <div class="rail-wrap${state.styleRail === "top" ? "" : " hidden"}" data-rail="top">${railCards("top", ["top", "outerwear", "dress"])}</div>
+    <div class="rail-wrap${state.styleRail === "bottom" ? "" : " hidden"}" data-rail="bottom">${railCards("bottom", ["bottom"])}</div>
+    <div class="rail-wrap${state.styleRail === "shoes" ? "" : " hidden"}" data-rail="shoes">${railCards("shoes", ["shoes"])}</div>`;
 }
 
 function viewHome() {
@@ -857,21 +796,15 @@ function stageAdvice() {
   const top = items.find((item) => String(item.id) === String(fit.top));
   const bottom = items.find((item) => String(item.id) === String(fit.bottom));
   const shoe = items.find((item) => String(item.id) === String(fit.shoes));
-  const hairName = { short: "kalta soch", medium: "o'rta soch", long: "uzun soch", bun: "yig'ilgan soch" }[fit.hair] || "soch";
-  const glassName = { round: "dumaloq ko'zoynak", square: "to'rtburchak ko'zoynak", sun: "quyosh ko'zoynagi" }[fit.glasses] || "";
   const bits = [];
-  if (fit.fromAvatar) bits.push(fit.agentNote || `Avatar rasmingdan teri va qomat olindi: taxminan ${fit.height} sm, ${fit.weight} kg.`);
-  else if (fit.fromBody) bits.push(`Tana rasming bo'yicha maket taxminan ${fit.height} sm va ${fit.weight} kg ga yaqinlashtirildi.`);
+  if (fit.fromAvatar && fit.agentNote) bits.push(fit.agentNote);
   if (!top && !bottom && !shoe) {
-    bits.push("Uslubdagi doiradan kiyimni bos — u avatarga darhol kiydiriladi.");
+    bits.push("Pastdagi doiradan kiyimni bos — u avatarga darhol kiydiriladi.");
     return bits.join(" ");
   }
   if (top) bits.push(`${top.name} senga juda mos tushadi.`);
   if (bottom) bits.push(`${bottom.name} tana chizig'ini yaxshi ushlaydi.`);
-  if (shoe && top) bits.push(`${shoe.name} bilan bu obraz mukammal chiqadi.`);
-  else if (!shoe) bits.push("Oyoq kiyim qo'shsang, obraz yanada to'liq chiqadi.");
-  if (top) bits.push(`${hairName[0].toUpperCase()}${hairName.slice(1)} bilan bu ustki kiyim bir-biriga tushadi.`);
-  if (glassName && top) bits.push(`${glassName[0].toUpperCase()}${glassName.slice(1)} bu obrazni yengil qiladi.`);
+  if (shoe && top) bits.push(`${shoe.name} bilan bu obraz to'liq chiqadi.`);
   return bits.join(" ");
 }
 
@@ -1222,6 +1155,7 @@ document.body.addEventListener("click", async (event) => {
       openModal(`<div class="stack">
         <div class="spread"><h2>Yana</h2><button class="icon-btn" data-action="close-modal">×</button></div>
         <button class="btn" data-action="nav" data-view="add">Kiyim qo'shish</button>
+        <label class="btn">Yuz rasmi<input id="fit-face" hidden type="file" accept="image/*" capture="user"></label>
         <button class="btn" data-action="nav" data-view="wardrobe">Garderob</button>
         <button class="btn" data-action="nav" data-view="stylist">Stilist</button>
         <button class="btn" data-action="nav" data-view="calendar">Taqvim</button>
