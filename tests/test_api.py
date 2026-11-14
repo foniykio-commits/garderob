@@ -64,9 +64,14 @@ def test_personal_flow_has_no_library_cap(client):
     shoes = upload(client, "shoes", "krossovka", (240, 240, 240))
     assert top["color_name"] != "oq"
     assert top["image_url"].startswith("/media/items/")
+    assert top["thumb_url"].startswith("/media/thumb/items/")
     picture = client.get(top["image_url"])
     assert picture.status_code == 200
     assert picture.headers["content-type"].startswith("image/")
+    assert len(picture.content) <= 100 * 1024
+    thumb = client.get(top["thumb_url"])
+    assert thumb.status_code == 200
+    assert len(thumb.content) <= len(picture.content)
     assert client.get("/api/health").json()["images"] == "database"
 
     renamed = client.patch(f"/api/items/{top['id']}", json={"name": "Qora futbolka", "notes": "sevimli"})

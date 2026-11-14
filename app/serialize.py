@@ -34,6 +34,7 @@ def dump_item(item: Item) -> dict:
         "last_worn_on": item.last_worn_on.isoformat() if item.last_worn_on else None,
         "created_at": item.created_at.isoformat() if item.created_at else None,
         "image_url": item.stored_url or f"/media/{folder}/{item.filename}",
+        "thumb_url": item.stored_url if (item.stored_url or "").startswith("http") else f"/media/thumb/{folder}/{item.filename}",
         "forgotten": is_forgotten(item),
     }
 

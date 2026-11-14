@@ -16,6 +16,8 @@ const state = {
   addSubtype: "",
   shopCategory: "",
   shopSubtype: "",
+  loading: false,
+  busy: false,
 };
 
 let meta = null;
@@ -112,8 +114,86 @@ function subtypeOptions(category, current) {
   return optionTags(meta.subtypes[category] || [], current, "Turini tanlang");
 }
 
-function photo(item) {
-  return `<img src="${esc(item.image_url)}" alt="${esc(item.name)}">`;
+function photo(item, full) {
+  const src = full ? item.image_url : (item.thumb_url || item.image_url);
+  return `<img src="${esc(src)}" alt="${esc(item.name)}" loading="lazy" decoding="async">`;
+}
+
+function skeleton(cards = 4) {
+  const bones = Array.from({ length: cards }, () => `<div class="bone photo"></div><div class="bone"></div><div class="bone short"></div>`).join("");
+  return `<div class="skeleton" aria-busy="true">${bones}</div>`;
+}
+
+function idb() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("garderob", 1);
+    request.onupgradeneeded = () => request.result.createObjectStore("kv");
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function idbGet(key) {
+  try {
+    const db = await idb();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction("kv", "readonly");
+      const request = tx.objectStore("kv").get(key);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function saveSnapshot() {
+  if (!meta || !profile) return;
+  try {
+    const db = await idb();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction("kv", "readwrite");
+      tx.objectStore("kv").put({ meta, profile, items, today: state.today, history: state.history }, "snapshot");
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (_error) { /* xotira yozilmasa ham ilova ishlaydi */ }
+}
+
+async function shrinkFile(file) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 800 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    if (bitmap.close) bitmap.close();
+    let quality = 0.82;
+    let blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+    while (blob && blob.size > 100 * 1024 && quality > 0.5) {
+      quality -= 0.08;
+      blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+    }
+    if (!blob || blob.size >= file.size) return file;
+    return new File([blob], "kiyim.webp", { type: "image/webp" });
+  } catch (_error) {
+    return file;
+  }
+}
+
+function lockUi(button) {
+  state.busy = true;
+  document.body.classList.add("is-busy");
+  if (!button) return;
+  button.disabled = true;
+  button.classList.add("is-busy");
+  if (button.classList.contains("btn")) button.textContent = "Yuklanmoqda…";
+}
+
+function unlockUi() {
+  state.busy = false;
+  document.body.classList.remove("is-busy");
 }
 
 function ring(percent, label) {
@@ -157,7 +237,7 @@ function clothCard(item) {
 
 function viewHome() {
   const today = state.today;
-  if (!today) return `<p class="boot">Yuklanmoqda…</p>`;
+  if (!today) return skeleton(2);
   const weather = today.weather || {};
   const temp = weather.temp == null ? "—" : `${Math.round(weather.temp)}°`;
   const outfits = (today.outfits || []).map((outfit, index) => outfitCard(outfit, index > 0)).join("");
@@ -178,6 +258,7 @@ function viewHome() {
 }
 
 function viewWardrobe() {
+  if (state.loading && !items.length) return skeleton(4);
   const cats = [{ key: "all", label: "Hammasi" }, ...meta.categories]
     .map((cat) => `<button class="chip${state.category === cat.key ? " on" : ""}" data-action="set-cat" data-cat="${esc(cat.key)}">${esc(cat.label)}</button>`)
     .join("");
@@ -194,7 +275,7 @@ function viewWardrobe() {
 }
 
 function viewAdd() {
-  const previews = state.pending.map((row, index) => `<figure><img src="${esc(row.url)}" alt=""><button class="icon-btn" data-action="remove-pending" data-index="${index}" type="button">×</button></figure>`).join("");
+  const previews = state.pending.map((row, index) => `<figure><img src="${esc(row.url)}" alt="" loading="lazy" decoding="async"><button class="icon-btn" data-action="remove-pending" data-index="${index}" type="button">×</button></figure>`).join("");
   const seasons = meta.seasons.map((season) => `<label class="check"><input class="add-season" type="checkbox" value="${esc(season.key)}"${season.key === "all" ? " checked" : ""}>${esc(season.label)}</label>`).join("");
   return `<form class="stack" id="add-form">
     <div class="drop">
@@ -219,7 +300,7 @@ function viewAdd() {
 
 function viewStylist() {
   const chips = ["Bugun nima kiyaman?", "Ishga qanday obraz?", "Yomg'ir yog'sa-chi?", "Kechki uchrashuv"].map((text) => `<button class="chip" type="button" data-action="chip-chat" data-text="${esc(text)}">${esc(text)}</button>`).join("");
-  const messages = state.history.length ? state.history.map((message) => {
+  const messages = state.loading && !state.history.length ? skeleton(2) : state.history.length ? state.history.map((message) => {
     const outfits = message.role === "assistant" && message.payload?.outfits
       ? message.payload.outfits.map((outfit) => outfitCard(outfit, false)).join("")
       : "";
@@ -289,7 +370,7 @@ function viewShop() {
     const pairs = (advice.pairings || []).map((pair) => `<article class="card"><div class="spread"><b>${pair.percent}%</b><span>${esc(pair.item.name)}</span></div><p>${esc(pair.why)}</p></article>`).join("");
     result = `<section class="card stack">
       <div class="spread">${ring(advice.headline_percent, advice.headline_label)}<div><h2>${esc(advice.title)}</h2><p>${esc(advice.summary)}</p></div></div>
-      <img src="${esc(advice.image_url)}" alt="Do'kon rasmi" style="height:220px;object-fit:contain;background:#efe6d8;border-radius:18px">
+      <img src="${esc(advice.image_url)}" alt="Do'kon rasmi" loading="lazy" decoding="async" style="height:220px;object-fit:contain;background:#efe6d8;border-radius:18px">
       <div class="form-grid">
         <label class="lbl">Turkum<select id="shop-cat" class="field">${optionTags(meta.categories, advice.category, "Bilmayman")}</select></label>
         <label class="lbl">Turi<select id="shop-sub" class="field">${subtypeOptions(advice.category || "top", advice.subtype)}</select></label>
@@ -317,7 +398,7 @@ function viewShop() {
 
 function viewStats() {
   const stats = state.stats;
-  if (!stats) return `<p class="boot">Hisoblanmoqda…</p>`;
+  if (!stats) return skeleton(3);
   const max = Math.max(...stats.by_category.map((row) => row.count), 1);
   const bars = stats.by_category.map((row) => `<div><div class="spread"><span>${esc(row.label)}</span><b>${row.count}</b></div><div class="bar"><i style="width:${(row.count / max) * 100}%"></i></div></div>`).join("");
   const colors = stats.by_color.map((row) => `<span class="chip">${esc(row.name)} · ${row.count}</span>`).join("");
@@ -401,14 +482,24 @@ function render() {
 async function go(view) {
   state.view = view;
   localStorage.setItem("garderob-view", view);
-  if (view === "home") state.today = await api("/api/today");
-  if (view === "stats") state.stats = await api("/api/stats");
-  if (view === "calendar") await loadCalendar();
-  if (view === "stylist" && !state.historyLoaded) {
-    state.history = await api("/api/stylist/history");
-    state.historyLoaded = true;
+  const cold = (view === "home" && !state.today) || (view === "stats" && !state.stats) || (view === "stylist" && !state.historyLoaded && !state.history.length);
+  if (cold) {
+    state.loading = true;
+    render();
   }
-  render();
+  try {
+    if (view === "home") state.today = await api("/api/today");
+    if (view === "stats") state.stats = await api("/api/stats");
+    if (view === "calendar") await loadCalendar();
+    if (view === "stylist" && !state.historyLoaded) {
+      state.history = await api("/api/stylist/history");
+      state.historyLoaded = true;
+    }
+  } finally {
+    state.loading = false;
+    render();
+    saveSnapshot();
+  }
 }
 
 async function loadCalendar() {
@@ -432,7 +523,7 @@ function openItem(id) {
   const seasons = meta.seasons.map((season) => `<label class="check"><input class="edit-season" type="checkbox" value="${esc(season.key)}"${item.seasons.includes(season.key) ? " checked" : ""}>${esc(season.label)}</label>`).join("");
   openModal(`<div class="stack">
     <div class="spread"><h2>${esc(item.name)}</h2><button class="icon-btn" data-action="close-modal">×</button></div>
-    <div class="cloth-photo">${photo(item)}</div>
+    <div class="cloth-photo">${photo(item, true)}</div>
     <label class="lbl">Nom<input id="edit-name" class="field" value="${esc(item.name)}"></label>
     <label class="lbl">Turkum<select id="edit-cat" class="field">${optionTags(meta.categories, item.category)}</select></label>
     <label class="lbl">Turi<select id="edit-sub" class="field">${subtypeOptions(item.category, item.subtype)}</select></label>
@@ -461,6 +552,7 @@ function numberOrNull(id) {
 
 async function refreshItems() {
   items = await api("/api/items");
+  saveSnapshot();
 }
 
 async function saveItem(id) {
@@ -533,6 +625,17 @@ async function saveDay(clear) {
 async function boot() {
   state.month = localISO().slice(0, 7);
   state.selectedDate = localISO();
+  const cached = await idbGet("snapshot");
+  if (cached?.meta && cached.profile) {
+    meta = cached.meta;
+    profile = cached.profile;
+    items = cached.items || [];
+    state.today = cached.today || null;
+    state.history = cached.history || [];
+    state.historyLoaded = state.history.length > 0;
+    renderShell();
+    render();
+  }
   [meta, profile, items] = await Promise.all([api("/api/meta"), api("/api/profile"), api("/api/items")]);
   const saved = localStorage.getItem("garderob-view");
   await go(views[saved] ? saved : "home");
@@ -540,8 +643,10 @@ async function boot() {
 
 document.body.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
-  if (!button) return;
+  if (!button || state.busy) return;
   const action = button.dataset.action;
+  const instant = new Set(["more", "close-modal", "open-item", "set-cat", "toggle-forgotten", "remove-pending", "pick-day", "toggle-pick"]);
+  if (!instant.has(action)) lockUi(button);
   try {
     if (action === "nav") {
       closeModal();
@@ -639,11 +744,19 @@ document.body.addEventListener("click", async (event) => {
     }
   } catch (error) {
     toast(error.message);
+  } finally {
+    unlockUi();
   }
 });
 
 document.body.addEventListener("submit", async (event) => {
   const form = event.target;
+  if (state.busy) {
+    event.preventDefault();
+    return;
+  }
+  const submit = form.querySelector("[type=submit]");
+  lockUi(submit);
   try {
     if (form.id === "chat-form") {
       event.preventDefault();
@@ -654,7 +767,7 @@ document.body.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (!state.pending.length) return;
       const data = new FormData();
-      for (const row of state.pending) data.append("files", row.file);
+      for (const row of state.pending) data.append("files", await shrinkFile(row.file));
       data.append("category", document.getElementById("add-cat").value);
       data.append("subtype", document.getElementById("add-sub").value);
       const seasons = checkedValues(".add-season");
@@ -668,13 +781,13 @@ document.body.addEventListener("submit", async (event) => {
       await go("wardrobe");
     } else if (form.id === "shop-form") {
       event.preventDefault();
-      const file = document.getElementById("shop-file").files[0];
-      if (!file) {
+      const picked = document.getElementById("shop-file").files[0];
+      if (!picked) {
         toast("Rasm tanlang");
         return;
       }
       const data = new FormData();
-      data.append("file", file);
+      data.append("file", await shrinkFile(picked));
       data.append("category", document.getElementById("shop-cat-form").value);
       data.append("subtype", document.getElementById("shop-sub-form").value);
       state.shopCategory = document.getElementById("shop-cat-form").value;
@@ -701,17 +814,21 @@ document.body.addEventListener("submit", async (event) => {
     }
   } catch (error) {
     toast(error.message);
+  } finally {
+    unlockUi();
   }
 });
 
-document.body.addEventListener("change", (event) => {
+document.body.addEventListener("change", async (event) => {
   const target = event.target;
   if (target.id === "file-input" || target.id === "camera-input") {
-    for (const file of target.files) {
-      if (!file.type.startsWith("image/")) continue;
-      state.pending.push({ file, url: URL.createObjectURL(file) });
-    }
+    const chosen = [...target.files];
     target.value = "";
+    for (const file of chosen) {
+      if (!file.type.startsWith("image/")) continue;
+      const small = await shrinkFile(file);
+      state.pending.push({ file: small, url: URL.createObjectURL(small) });
+    }
     render();
   } else if (target.id === "add-cat") {
     state.addCategory = target.value;

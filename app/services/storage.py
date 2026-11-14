@@ -85,26 +85,41 @@ def _folder_dir(folder: str):
     raise ValueError("Papka noto'g'ri.")
 
 
-def optimize_image(data: bytes) -> tuple[bytes, str]:
-    """Haqiqiy rasmni WebP qiladi. Buzilgan baytlar o'zgarmaydi."""
+DISPLAY_EDGE = 800
+DISPLAY_LIMIT = 100 * 1024
+THUMB_EDGE = 280
+THUMB_LIMIT = 28 * 1024
+
+
+def encode_webp(image: Image.Image, edge: int, max_bytes: int, depth: int = 0) -> bytes:
+    frame = image.copy()
+    if frame.mode not in ("RGB", "RGBA"):
+        frame = frame.convert("RGBA")
+    frame.thumbnail((edge, edge), Image.Resampling.LANCZOS)
+    best = b""
+    for quality in (82, 74, 66, 58, 50):
+        out = io.BytesIO()
+        frame.save(out, format="WEBP", quality=quality, method=4)
+        best = out.getvalue()
+        if len(best) <= max_bytes:
+            return best
+    if depth < 3 and max(frame.size) > 420:
+        return encode_webp(frame, max(420, int(edge * 0.75)), max_bytes, depth + 1)
+    return best
+
+
+def prepare_image(data: bytes) -> tuple[bytes, str, bytes | None]:
+    """Ko'rinadigan rasm 800px va 100 KB atrofida. Eskiz alohida, yanada yengil."""
     try:
         image = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
-        image = image.convert("RGBA")
-        image.thumbnail((960, 960), Image.Resampling.LANCZOS)
-        out = io.BytesIO()
-        try:
-            image.save(out, format="WEBP", quality=78, method=4)
-            mime = "image/webp"
-        except Exception:
-            out = io.BytesIO()
-            image.save(out, format="PNG", optimize=True)
-            mime = "image/png"
-        blob = out.getvalue()
-        if blob:
-            return blob, mime
+        image.load()
+        display = encode_webp(image, DISPLAY_EDGE, DISPLAY_LIMIT)
+        thumb = encode_webp(image, THUMB_EDGE, THUMB_LIMIT)
+        if display:
+            return display, "image/webp", thumb or None
     except Exception:
         logger.debug("Rasm siqilmadi, asl baytlar saqlanadi", exc_info=True)
-    return data, "image/png"
+    return data, "image/png", None
 
 
 def _ensure_tables() -> None:
@@ -122,6 +137,10 @@ def _blob_key(folder: str, name: str) -> str:
     return f"{folder}/{name}"
 
 
+def _thumb_key(folder: str, name: str) -> str:
+    return f"thumb/{folder}/{name}"
+
+
 def get_blob(folder: str, name: str):
     if not _NAME.match(name or ""):
         return None
@@ -136,12 +155,11 @@ def get_blob(folder: str, name: str):
         return BlobRecord(data=bytes(row.data), mime=row.mime or "image/webp")
 
 
-def _put_blob(folder: str, name: str, data: bytes, mime: str) -> None:
+def _put_key(key: str, data: bytes, mime: str) -> None:
     _ensure_tables()
     from ..database import SessionLocal
     from ..models import ImageBlob
 
-    key = _blob_key(folder, name)
     with SessionLocal() as db:
         row = db.get(ImageBlob, key)
         if row is None:
@@ -152,17 +170,31 @@ def _put_blob(folder: str, name: str, data: bytes, mime: str) -> None:
         db.commit()
 
 
-def _move_blob(source_folder: str, target_folder: str, name: str) -> None:
+def _put_blob(folder: str, name: str, data: bytes, mime: str) -> None:
+    _put_key(_blob_key(folder, name), data, mime)
+
+
+def _read_key(key: str) -> BlobRecord | None:
     _ensure_tables()
     from ..database import SessionLocal
     from ..models import ImageBlob
 
-    source = _blob_key(source_folder, name)
-    target = _blob_key(target_folder, name)
+    with SessionLocal() as db:
+        row = db.get(ImageBlob, key)
+        if row is None:
+            return None
+        return BlobRecord(data=bytes(row.data), mime=row.mime or "image/webp")
+
+
+def _move_key(source: str, target: str) -> bool:
+    _ensure_tables()
+    from ..database import SessionLocal
+    from ..models import ImageBlob
+
     with SessionLocal() as db:
         row = db.get(ImageBlob, source)
         if row is None:
-            raise ValueError("Vaqtinchalik rasm topilmadi.")
+            return False
         existing = db.get(ImageBlob, target)
         if existing is not None:
             db.delete(existing)
@@ -170,6 +202,13 @@ def _move_blob(source_folder: str, target_folder: str, name: str) -> None:
         db.add(ImageBlob(key=target, data=bytes(row.data), mime=row.mime))
         db.delete(row)
         db.commit()
+    return True
+
+
+def _move_blob(source_folder: str, target_folder: str, name: str) -> None:
+    if not _move_key(_blob_key(source_folder, name), _blob_key(target_folder, name)):
+        raise ValueError("Vaqtinchalik rasm topilmadi.")
+    _move_key(_thumb_key(source_folder, name), _thumb_key(target_folder, name))
 
 
 def _delete_blob(folder: str, name: str) -> None:
@@ -180,10 +219,11 @@ def _delete_blob(folder: str, name: str) -> None:
     from ..models import ImageBlob
 
     with SessionLocal() as db:
-        row = db.get(ImageBlob, _blob_key(folder, name))
-        if row is not None:
-            db.delete(row)
-            db.commit()
+        for key in (_blob_key(folder, name), _thumb_key(folder, name)):
+            row = db.get(ImageBlob, key)
+            if row is not None:
+                db.delete(row)
+        db.commit()
 
 
 def cleanup_stored_inbox(max_age_hours: int = 48) -> None:
@@ -193,7 +233,12 @@ def cleanup_stored_inbox(max_age_hours: int = 48) -> None:
 
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=max_age_hours)
     with SessionLocal() as db:
-        stale = db.query(ImageBlob).filter(ImageBlob.key.like("inbox/%"), ImageBlob.created_at < cutoff).all()
+        stale = (
+            db.query(ImageBlob)
+            .filter(ImageBlob.created_at < cutoff)
+            .filter(ImageBlob.key.like("inbox/%") | ImageBlob.key.like("thumb/inbox/%"))
+            .all()
+        )
         for row in stale:
             db.delete(row)
         db.commit()
@@ -213,9 +258,29 @@ def save_bytes(folder: str, data: bytes, name: str) -> StoredImage:
             format="png",
         )
         return StoredImage(key=name, url=result["secure_url"])
-    payload, mime = optimize_image(data)
+    payload, mime, thumb = prepare_image(data)
     _put_blob(folder, name, payload, mime)
+    if thumb:
+        _put_key(_thumb_key(folder, name), thumb, "image/webp")
     return StoredImage(key=name, url=f"/media/{folder}/{name}")
+
+
+def get_thumb(folder: str, name: str) -> BlobRecord | None:
+    if folder not in {"items", "inbox"} or not _NAME.match(name or ""):
+        return None
+    cached = _read_key(_thumb_key(folder, name))
+    if cached is not None:
+        return cached
+    full = get_blob(folder, name)
+    if full is None:
+        return None
+    try:
+        image = Image.open(io.BytesIO(full.data))
+        thumb = encode_webp(image, THUMB_EDGE, THUMB_LIMIT)
+    except Exception:
+        return full
+    _put_key(_thumb_key(folder, name), thumb, "image/webp")
+    return BlobRecord(data=thumb, mime="image/webp")
 
 
 def read_bytes(folder: str, name: str) -> bytes:

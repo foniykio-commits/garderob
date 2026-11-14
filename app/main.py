@@ -5,13 +5,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from .config import INBOX_DIR, ITEMS_DIR, ROOT, USING_POSTGRES
 from .constants import meta_dict
 from .database import Base, engine, ensure_schema
 from .routers import items, planner, profile, shop, stylist
 from .services.images import rembg_available
-from .services.storage import cleanup_stored_inbox, cloudinary_enabled, get_blob
+from .services.storage import cleanup_stored_inbox, cloudinary_enabled, get_blob, get_thumb
 
 logger = logging.getLogger("garderob")
 STATIC_DIR = ROOT / "app" / "static"
@@ -53,6 +54,7 @@ async def lifespan(_app: FastAPI):
 
 _prepare_dirs()
 app = FastAPI(title="Garderob", version="1.0.0", lifespan=lifespan)
+app.add_middleware(GZipMiddleware, minimum_size=256)
 app.include_router(profile.router)
 app.include_router(items.router)
 app.include_router(stylist.router)
@@ -98,17 +100,31 @@ def manifest():
     return FileResponse(STATIC_DIR / "manifest.webmanifest", media_type="application/manifest+json")
 
 
+def _image_response(blob) -> Response:
+    return Response(
+        content=bytes(blob.data),
+        media_type=blob.mime or "image/webp",
+        headers={"Cache-Control": "private, max-age=604800"},
+    )
+
+
+@app.get("/media/thumb/{folder}/{name}")
+def media_thumb(folder: str, name: str):
+    if folder not in {"items", "inbox"}:
+        raise HTTPException(404, "Rasm topilmadi.")
+    blob = get_thumb(folder, name)
+    if blob is None:
+        raise HTTPException(404, "Rasm topilmadi.")
+    return _image_response(blob)
+
+
 @app.get("/media/{folder}/{name}")
 def media_file(folder: str, name: str):
     if folder not in {"items", "inbox"}:
         raise HTTPException(404, "Rasm topilmadi.")
     blob = get_blob(folder, name)
     if blob is not None:
-        return Response(
-            content=bytes(blob.data),
-            media_type=blob.mime or "image/webp",
-            headers={"Cache-Control": "private, max-age=86400"},
-        )
+        return _image_response(blob)
     path = (ITEMS_DIR if folder == "items" else INBOX_DIR) / name
     if path.is_file():
         return FileResponse(path)

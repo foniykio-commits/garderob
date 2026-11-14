@@ -12,6 +12,23 @@ def test_postgres_urls_use_psycopg():
     assert sqlalchemy_url("sqlite:///tmp/garderob.db") == "sqlite:///tmp/garderob.db"
 
 
+def test_large_photo_becomes_light_webp():
+    from io import BytesIO
+
+    from PIL import Image
+
+    from app.services.storage import read_bytes, save_bytes
+
+    image = Image.new("RGBA", (1400, 1600), (180, 40, 40, 255))
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    name = "b" * 32 + ".png"
+    save_bytes("items", buffer.getvalue(), name)
+    stored = read_bytes("items", name)
+    assert stored.startswith(b"RIFF")
+    assert len(stored) <= 100 * 1024
+
+
 def test_local_image_roundtrip():
     name = "a" * 32 + ".png"
     payload = b"\x89PNG\r\n\x1a\nlocal-image"

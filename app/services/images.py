@@ -93,7 +93,7 @@ def cutout(image: Image.Image) -> Image.Image:
 
 def process_bytes(raw: bytes) -> tuple[bytes, dict]:
     image = ImageOps.exif_transpose(Image.open(io.BytesIO(raw)))
-    image = resize_max(image.convert("RGBA"), 900)
+    image = resize_max(image.convert("RGBA"), 800)
     cut = cutout(image)
     info = analyze_image(cut)
     buffer = io.BytesIO()
