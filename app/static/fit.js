@@ -2,7 +2,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const SKINS = ["#f3d3bf", "#e7b892", "#c68642", "#8d5524", "#5c3317", "#3b2214"];
-const MODEL_URL = "/assets/models/body.glb";
+const MODEL_URL = "/assets/models/avatar.glb";
+const POSE_CLIP = { rest: "Idle", wave: "Victory", walk: "Walk", sit: "SitDown" };
 const mobile = window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 820;
 
 function blankTexture() {
@@ -92,6 +93,24 @@ const POSES = {
     calf_r: [0.0394, -0.0663, 0.6201, 0.7807],
   },
 };
+
+function paintSurface(geometry) {
+  const position = geometry.attributes.position;
+  const normal = geometry.attributes.normal;
+  if (!position || geometry.getAttribute("uv")) return;
+  geometry.computeBoundingBox();
+  const box = geometry.boundingBox;
+  const spanX = Math.max(0.001, box.max.x - box.min.x);
+  const spanY = Math.max(0.001, box.max.y - box.min.y);
+  const uvs = new Float32Array(position.count * 2);
+  for (let index = 0; index < position.count; index += 1) {
+    let across = (position.getX(index) - box.min.x) / spanX;
+    if (normal && normal.getZ(index) < 0) across = 1 - across;
+    uvs[index * 2] = Math.min(1, Math.max(0, across));
+    uvs[index * 2 + 1] = Math.min(1, Math.max(0, (position.getY(index) - box.min.y) / spanY));
+  }
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+}
 
 function hairMesh(geometry, material) {
   const mesh = new THREE.Mesh(geometry, material);
@@ -288,6 +307,9 @@ export function mount(container, initial) {
   let skeleton = null;
   let cloth = null;
   let poseName = initial.pose || "rest";
+  let mixer = null;
+  let currentAction = null;
+  const outfit = { face: null, shirt: null, pants: null, skinTone: null };
   const poseEuler = new THREE.Euler();
   const poseQuat = new THREE.Quaternion();
   const clock = new THREE.Clock();
@@ -316,7 +338,8 @@ export function mount(container, initial) {
     const bmi = weightKg / (meters * meters);
     const fat = Math.max(-0.28, Math.min(0.9, (bmi - 22.5) / 12));
     const scale = meters / modelSpan;
-    figure.scale.setScalar(scale);
+    const build = Math.min(1.16, Math.max(0.88, 1 + (bmi - 22.5) * 0.01));
+    figure.scale.set(scale * build, scale, scale * build);
     bodyState.fat = fat;
     const fatUniform = uniform("uFat");
     if (fatUniform) fatUniform.value = fat;
@@ -331,10 +354,13 @@ export function mount(container, initial) {
     lookY = meters * 0.5;
     if (placedHeight !== heightCm) {
       placedHeight = heightCm;
-      dist = meters * 2.55;
+      dist = meters * 3.6;
     }
-    hairAnchor.scale.setScalar(0.18 * (heightCm / 170));
-    skin.color.set(next.skinHex || SKINS[Number(next.skin)] || SKINS[2]);
+    hairAnchor.scale.setScalar(0.22 * (heightCm / 170));
+    const tone = next.skinHex || SKINS[Number(next.skin)] || SKINS[2];
+    if (outfit.skinTone) outfit.skinTone.color.set(tone);
+    if (outfit.face && !outfit.face.map) outfit.face.color.set(tone);
+    skin.color.set(tone);
   }
 
   function applyHair(style, color) {
@@ -350,15 +376,31 @@ export function mount(container, initial) {
     return cloth?.material?.userData?.shader?.uniforms[name];
   }
 
+  function dress(material, texture, fallback) {
+    if (!material) return;
+    material.map = texture || null;
+    material.color.set(texture ? "#ffffff" : fallback);
+    material.needsUpdate = true;
+  }
+
   function assignMap(slot, texture) {
     const previous = maps[slot];
     if (previous && previous !== texture) previous.dispose();
     maps[slot] = texture;
     if (slot === "face") {
+      dress(outfit.face, texture, skin.color);
       const has = uniform("uHasFace");
       const map = uniform("uFaceMap");
       if (has) has.value = texture ? 1 : 0;
       if (map) map.value = texture || blank;
+      return;
+    }
+    if (slot === "top") {
+      dress(outfit.shirt, texture, "#6d4c7d");
+      return;
+    }
+    if (slot === "bottom") {
+      dress(outfit.pants, texture, "#2c3440");
       return;
     }
     const flag = { top: "uHasTop", bottom: "uHasBottom", shoe: "uHasShoe" }[slot];
@@ -449,11 +491,34 @@ export function mount(container, initial) {
     applyShape(next);
     applyHair(next.hair, next.hairColor);
     applyClothes(next);
+    playPose(poseName);
+  }
+
+  let shownPose = "";
+
+  function playPose(name) {
+    if (!mixer || shownPose === name) return;
+    shownPose = name;
+    const found = THREE.AnimationClip.findByName(playPose.clips || [], POSE_CLIP[name] || "Idle");
+    if (!found) return;
+    const next = mixer.clipAction(found);
+    next.reset();
+    if (name === "sit") {
+      next.setLoop(THREE.LoopOnce, 1);
+      next.clampWhenFinished = true;
+    } else {
+      next.setLoop(THREE.LoopRepeat, Infinity);
+      next.clampWhenFinished = false;
+    }
+    if (currentAction && currentAction !== next) currentAction.fadeOut(0.2);
+    next.fadeIn(0.2).play();
+    currentAction = next;
   }
 
   function animate() {
     if (stopped) return;
-    applyPose(clock.getElapsedTime());
+    if (mixer) mixer.update(clock.getDelta());
+    else applyPose(clock.getElapsedTime());
     syncClothUniforms();
     if (headBone) {
       headBone.getWorldPosition(hairAnchor.position);
@@ -522,16 +587,30 @@ export function mount(container, initial) {
       const foot = uniform("uFoot");
       if (span) span.value = bodyState.span;
       if (foot) foot.value = bodyState.foot;
-      mesh.material = skin;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      mesh.frustumCulled = false;
+      gltf.scene.traverse((object) => {
+        if (!object.isMesh) return;
+        object.castShadow = true;
+        object.receiveShadow = true;
+        object.frustumCulled = false;
+        const materials = [].concat(object.material);
+        for (const material of materials) {
+          if (material.name === "Face" || material.name === "Shirt" || material.name === "Pants") paintSurface(object.geometry);
+          if (material.name === "Skin") outfit.skinTone = material;
+          if (material.name === "Face") outfit.face = material;
+          if (material.name === "Shirt") outfit.shirt = material;
+          if (material.name === "Pants") outfit.pants = material;
+        }
+      });
+      if (outfit.skinTone) outfit.skinTone.color.set(SKINS[initial.skin] || SKINS[2]);
+      if (outfit.face) outfit.face.color.set(SKINS[initial.skin] || SKINS[2]);
+      if (outfit.shirt) outfit.shirt.color.set("#6d4c7d");
+      if (outfit.pants) outfit.pants.color.set("#2c3440");
       figure.add(gltf.scene);
       skeleton = mesh.skeleton;
       for (const bone of skeleton.bones) bone.userData.rest = bone.quaternion.clone();
-      headBone = skeleton.bones.find((bone) => bone.name === "head") || null;
-      cloth = makeGarment(mesh, blank, bodyState);
-      mesh.parent.add(cloth);
+      headBone = skeleton.bones.find((bone) => bone.name === "Head" || bone.name === "head") || null;
+      mixer = new THREE.AnimationMixer(gltf.scene);
+      playPose.clips = gltf.animations;
       ready = true;
       apply(pending);
     },
