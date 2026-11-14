@@ -73,15 +73,10 @@ const POSES = {
     spine_02: [0.04, 0.08, 0],
   },
   sit: {
-    thigh_l: [0.95, 0.04, 0.02],
-    thigh_r: [-0.95, -0.04, -0.02],
-    calf_l: [-1.2, 0, 0],
-    calf_r: [1.2, 0, 0],
-    spine_01: [0.2, 0, 0],
-    upperarm_l: [0.15, 0, 0.22],
-    upperarm_r: [-0.15, 0, -0.22],
-    lowerarm_l: [0, 0.4, 0],
-    lowerarm_r: [0, 0.4, 0],
+    thigh_l: [-0.5728, -0.0631, 0.288, 0.7648],
+    thigh_r: [-0.5728, 0.0631, -0.288, 0.7648],
+    calf_l: [-0.0394, 0.0663, 0.6201, 0.7807],
+    calf_r: [0.0394, -0.0663, 0.6201, 0.7807],
   },
 };
 
@@ -121,7 +116,7 @@ function makeGarment(source, blankMap, metrics) {
     polygonOffsetUnits: -3,
     depthWrite: false,
   });
-  material.customProgramCacheKey = () => "draped-garment-v1";
+  material.customProgramCacheKey = () => "draped-garment-v2";
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uHasTop = { value: 0 };
     shader.uniforms.uHasBottom = { value: 0 };
@@ -142,9 +137,9 @@ function makeGarment(source, blankMap, metrics) {
       "#include <map_fragment>",
       `#include <map_fragment>
       vec4 draped = vec4(0.0);
-      if (uHasShoe > 0.5 && vGarmentY < 0.11) draped = texture2D(uShoeMap, vUv);
-      else if (uHasBottom > 0.5 && vGarmentY < 0.56) draped = texture2D(uBottomMap, vUv);
-      else if (uHasTop > 0.5 && vGarmentY > 0.45 && vGarmentY < 0.83) draped = texture2D(uTopMap, vUv);
+      if (uHasShoe > 0.5 && vGarmentY < 0.11) draped = texture2D(uShoeMap, vMapUv);
+      else if (uHasBottom > 0.5 && vGarmentY < 0.56) draped = texture2D(uBottomMap, vMapUv);
+      else if (uHasTop > 0.5 && vGarmentY > 0.45 && vGarmentY < 0.83) draped = texture2D(uTopMap, vMapUv);
       if (draped.a < 0.22) discard;
       diffuseColor = draped;`
     );
@@ -373,13 +368,18 @@ export function mount(container, initial) {
   function applyPose(time) {
     if (!skeleton) return;
     const pose = POSES[poseName] || POSES.rest;
-    figure.position.y = poseName === "sit" ? -0.22 * Math.max(figure.scale.y, 0.2) : 0;
+    figure.position.y = poseName === "sit" ? -0.37 * Math.max(figure.scale.y, 0.2) : 0;
     const breathe = Math.sin(time * 1.35) * 0.035;
     for (const bone of skeleton.bones) {
       const rest = bone.userData.rest;
       if (!rest) continue;
       bone.quaternion.copy(rest);
       const extra = pose[bone.name] || [0, 0, 0];
+      if (extra.length === 4) {
+        poseQuat.set(extra[0], extra[1], extra[2], extra[3]);
+        bone.quaternion.multiply(poseQuat);
+        continue;
+      }
       let x = extra[0];
       let y = extra[1];
       let z = extra[2];
