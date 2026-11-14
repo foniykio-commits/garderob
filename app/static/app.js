@@ -393,6 +393,15 @@ async function applyAvatarFiles(fileList, hint) {
         return;
       }
     }
+    if (hint === "face" || hint === "auto") {
+      try {
+        const fit = ensureFitState();
+        fit.face = await paintPortrait(files[0], null, null);
+        syncFit();
+        toast("Yuz rasmi avatarga qo'yildi");
+        return;
+      } catch (_fallback) { /* pastdagi xabar chiqadi */ }
+    }
     toast(error.message || "Rasm o'qilmadi");
     return;
   }

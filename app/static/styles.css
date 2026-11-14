@@ -201,6 +201,13 @@ body.on-stage #view { flex: 1; min-height: 0; display: flex; flex-direction: col
 .hair-row { display: flex; gap: 6px; height: 36px; align-items: center; overflow-x: auto; overflow-y: hidden; }
 .hair-row .chip { flex: 0 0 auto; background: #1a1a20; color: #d7d7de; border-color: transparent; padding: 6px 12px; }
 .hair-row .chip.on { background: #fff; color: #111; }
+@media (max-height: 720px) {
+  .stage-dock { gap: 6px; padding-top: 6px; padding-bottom: 8px; }
+  .circle-rail, .rail-wrap { height: 78px; min-height: 78px; flex-basis: 78px; }
+  .circle-pick { height: 74px; grid-template-rows: 54px 16px; }
+  .circle-cell { width: 54px; height: 54px; }
+  .stage-sliders input[type="range"] { height: 20px; }
+}
 .rail-wrap.hidden { display: none; }
 .stage-more {
   position: absolute; z-index: 6; top: calc(10px + env(safe-area-inset-top)); right: 12px;

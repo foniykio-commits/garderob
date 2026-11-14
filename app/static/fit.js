@@ -115,7 +115,19 @@ function paintSurface(geometry) {
 function hairMesh(geometry, material) {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
+  mesh.renderOrder = 3;
   return mesh;
+}
+
+function portraitGeometry() {
+  const geometry = new THREE.PlaneGeometry(0.74, 0.98, 10, 1);
+  const position = geometry.attributes.position;
+  for (let index = 0; index < position.count; index += 1) {
+    const across = position.getX(index) / 0.37;
+    position.setZ(index, -across * across * 0.07);
+  }
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 function makeGarment(source, blankMap, metrics) {
@@ -319,8 +331,21 @@ export function mount(container, initial) {
   for (const group of Object.values(glassesStyles)) {
     group.visible = false;
     group.scale.setScalar(1.25);
+    group.traverse((object) => {
+      if (object.isMesh) object.renderOrder = 4;
+    });
     hairAnchor.add(group);
   }
+  const portraitMat = new THREE.MeshBasicMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: THREE.FrontSide,
+  });
+  const portrait = new THREE.Mesh(portraitGeometry(), portraitMat);
+  portrait.position.set(0, 0.12, 0.5);
+  portrait.visible = false;
+  portrait.renderOrder = 2;
+  hairAnchor.add(portrait);
   scene.add(hairAnchor);
 
   const loader = new THREE.TextureLoader();
@@ -368,7 +393,7 @@ export function mount(container, initial) {
     const bmi = weightKg / (meters * meters);
     const fat = Math.max(-0.28, Math.min(0.9, (bmi - 22.5) / 12));
     const scale = meters / modelSpan;
-    const build = Math.min(1.16, Math.max(0.88, 1 + (bmi - 22.5) * 0.01));
+    const build = Math.min(1.24, Math.max(0.84, 1 + (bmi - 22.5) * 0.016));
     figure.scale.set(scale * build, scale, scale * build);
     bodyState.fat = fat;
     const fatUniform = uniform("uFat");
@@ -425,11 +450,16 @@ export function mount(container, initial) {
     if (previous && previous !== texture) previous.dispose();
     maps[slot] = texture;
     if (slot === "face") {
-      dress(outfit.face, texture, skin.color);
-      const has = uniform("uHasFace");
-      const map = uniform("uFaceMap");
-      if (has) has.value = texture ? 1 : 0;
-      if (map) map.value = texture || blank;
+      portraitMat.map = texture || null;
+      portraitMat.needsUpdate = true;
+      portrait.visible = Boolean(texture);
+      if (outfit.face) {
+        outfit.face.opacity = texture ? 0 : 1;
+        outfit.face.transparent = Boolean(texture);
+        outfit.face.depthWrite = !texture;
+        if (!texture) outfit.face.color.set(skin.color);
+        outfit.face.needsUpdate = true;
+      }
       return;
     }
     if (slot === "top") {
