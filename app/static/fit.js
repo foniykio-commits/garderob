@@ -13,19 +13,13 @@ function blankTexture() {
 }
 
 function installBodyShader(material, blank, state) {
-  material.customProgramCacheKey = () => "anatomical-body-v2";
+  material.customProgramCacheKey = () => "anatomical-body-v3";
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uFat = { value: state.fat };
     shader.uniforms.uSpan = { value: state.span };
     shader.uniforms.uFoot = { value: state.foot };
     shader.uniforms.uHasFace = { value: 0 };
-    shader.uniforms.uHasTop = { value: 0 };
-    shader.uniforms.uHasBottom = { value: 0 };
-    shader.uniforms.uHasShoe = { value: 0 };
     shader.uniforms.uFaceMap = { value: blank };
-    shader.uniforms.uTopMap = { value: blank };
-    shader.uniforms.uBottomMap = { value: blank };
-    shader.uniforms.uShoeMap = { value: blank };
     shader.vertexShader = `varying float vY01;\nvarying float vFront;\nvarying vec3 vBind;\nuniform float uFat;\nuniform float uSpan;\nuniform float uFoot;\n${shader.vertexShader}`;
     shader.vertexShader = shader.vertexShader.replace(
       "#include <skinning_vertex>",
@@ -43,18 +37,10 @@ function installBodyShader(material, blank, state) {
       vFront = objectNormal.z;
       vBind = position.xyz;`
     );
-    shader.fragmentShader = `varying float vY01;\nvarying float vFront;\nvarying vec3 vBind;\nuniform float uHasFace;\nuniform float uHasTop;\nuniform float uHasBottom;\nuniform float uHasShoe;\nuniform sampler2D uFaceMap;\nuniform sampler2D uTopMap;\nuniform sampler2D uBottomMap;\nuniform sampler2D uShoeMap;\n${shader.fragmentShader}`;
+    shader.fragmentShader = `varying float vY01;\nvarying float vFront;\nvarying vec3 vBind;\nuniform float uHasFace;\nuniform sampler2D uFaceMap;\n${shader.fragmentShader}`;
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <map_fragment>",
       `#include <map_fragment>
-      vec2 wearUv = clamp(vec2(vBind.x * 1.15 + 0.5, vY01 * 1.05), 0.0, 1.0);
-      if (uHasShoe > 0.5 && vY01 < 0.09) {
-        diffuseColor.rgb = texture2D(uShoeMap, wearUv).rgb;
-      } else if (uHasBottom > 0.5 && vY01 < 0.52) {
-        diffuseColor.rgb = texture2D(uBottomMap, wearUv).rgb;
-      } else if (uHasTop > 0.5 && vY01 > 0.48 && vY01 < 0.80) {
-        diffuseColor.rgb = texture2D(uTopMap, wearUv).rgb;
-      }
       if (uHasFace > 0.5 && vY01 > 0.84 && vFront > 0.25) {
         vec2 faceUv = clamp(vec2(vBind.x / 0.11 + 0.5, (vY01 - 0.84) / 0.16), 0.0, 1.0);
         vec3 face = texture2D(uFaceMap, faceUv).rgb;
@@ -65,10 +51,112 @@ function installBodyShader(material, blank, state) {
   };
 }
 
+const POSES = {
+  rest: {},
+  wave: {
+    upperarm_r: [0.15, 0.2, -1.55],
+    lowerarm_r: [0, 0, -0.85],
+    hand_r: [0.2, 0.1, -0.2],
+    clavicle_r: [0, 0, -0.25],
+    spine_02: [0.05, -0.08, 0],
+  },
+  walk: {
+    thigh_l: [0.55, 0, 0.04],
+    thigh_r: [-0.4, 0, -0.04],
+    calf_l: [-0.7, 0, 0],
+    calf_r: [-0.2, 0, 0],
+    upperarm_l: [0.45, 0, 0.2],
+    upperarm_r: [-0.4, 0, -0.15],
+    lowerarm_l: [0, 0.35, 0],
+    lowerarm_r: [0, -0.25, 0],
+    spine_01: [0.06, 0.18, 0],
+    spine_02: [0.04, 0.08, 0],
+  },
+  sit: {
+    thigh_l: [0.95, 0.04, 0.02],
+    thigh_r: [-0.95, -0.04, -0.02],
+    calf_l: [-1.2, 0, 0],
+    calf_r: [1.2, 0, 0],
+    spine_01: [0.2, 0, 0],
+    upperarm_l: [0.15, 0, 0.22],
+    upperarm_r: [-0.15, 0, -0.22],
+    lowerarm_l: [0, 0.4, 0],
+    lowerarm_r: [0, 0.4, 0],
+  },
+};
+
 function hairMesh(geometry, material) {
   const mesh = new THREE.Mesh(geometry, material);
   mesh.castShadow = true;
   return mesh;
+}
+
+function makeGarment(source, blankMap, metrics) {
+  const geometry = source.geometry.clone();
+  const position = geometry.attributes.position;
+  const normal = geometry.attributes.normal;
+  const uvs = new Float32Array(position.count * 2);
+  for (let index = 0; index < position.count; index += 1) {
+    const x = position.getX(index);
+    const y = position.getY(index);
+    const z = position.getZ(index);
+    position.setXYZ(index, x + normal.getX(index) * 0.012, y + normal.getY(index) * 0.012, z + normal.getZ(index) * 0.012);
+    let across = Math.min(0.98, Math.max(0.02, 0.5 + x / 0.46));
+    if (normal.getZ(index) < 0) across = 1 - across;
+    const y01 = (y - metrics.foot) / metrics.span;
+    uvs[index * 2] = across;
+    uvs[index * 2 + 1] = Math.min(1, Math.max(0, y01));
+  }
+  geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+  const material = new THREE.MeshPhysicalMaterial({
+    map: blankMap,
+    color: "#ffffff",
+    roughness: 0.74,
+    metalness: 0,
+    transparent: true,
+    alphaTest: 0.22,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -3,
+    polygonOffsetUnits: -3,
+    depthWrite: false,
+  });
+  material.customProgramCacheKey = () => "draped-garment-v1";
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uHasTop = { value: 0 };
+    shader.uniforms.uHasBottom = { value: 0 };
+    shader.uniforms.uHasShoe = { value: 0 };
+    shader.uniforms.uTopMap = { value: blankMap };
+    shader.uniforms.uBottomMap = { value: blankMap };
+    shader.uniforms.uShoeMap = { value: blankMap };
+    shader.uniforms.uFoot = { value: metrics.foot };
+    shader.uniforms.uSpan = { value: metrics.span };
+    shader.vertexShader = `varying float vGarmentY;\nuniform float uFoot;\nuniform float uSpan;\n${shader.vertexShader}`;
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <skinning_vertex>",
+      `#include <skinning_vertex>
+      vGarmentY = clamp((position.y - uFoot) / uSpan, 0.0, 1.0);`
+    );
+    shader.fragmentShader = `varying float vGarmentY;\nuniform float uHasTop;\nuniform float uHasBottom;\nuniform float uHasShoe;\nuniform sampler2D uTopMap;\nuniform sampler2D uBottomMap;\nuniform sampler2D uShoeMap;\n${shader.fragmentShader}`;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <map_fragment>",
+      `#include <map_fragment>
+      vec4 draped = vec4(0.0);
+      if (uHasShoe > 0.5 && vGarmentY < 0.11) draped = texture2D(uShoeMap, vUv);
+      else if (uHasBottom > 0.5 && vGarmentY < 0.56) draped = texture2D(uBottomMap, vUv);
+      else if (uHasTop > 0.5 && vGarmentY > 0.45 && vGarmentY < 0.83) draped = texture2D(uTopMap, vUv);
+      if (draped.a < 0.22) discard;
+      diffuseColor = draped;`
+    );
+    material.userData.shader = shader;
+  };
+  const draped = new THREE.SkinnedMesh(geometry, material);
+  draped.bind(source.skeleton, source.bindMatrix);
+  draped.castShadow = true;
+  draped.frustumCulled = false;
+  draped.visible = false;
+  draped.renderOrder = 2;
+  return draped;
 }
 
 export function mount(container, initial) {
@@ -189,6 +277,12 @@ export function mount(container, initial) {
   let ready = false;
   let shownHair = "";
   let headBone = null;
+  let skeleton = null;
+  let cloth = null;
+  let poseName = initial.pose || "rest";
+  const poseEuler = new THREE.Euler();
+  const poseQuat = new THREE.Quaternion();
+  const clock = new THREE.Clock();
   let pending = initial;
   let frame = 0;
   let stopped = false;
@@ -198,11 +292,8 @@ export function mount(container, initial) {
   const maps = { top: null, bottom: null, shoe: null, face: null };
 
   function placeCamera() {
-    camera.position.set(
-      Math.sin(yaw) * Math.cos(pitch) * dist,
-      lookY + Math.sin(pitch) * dist * 0.35,
-      Math.cos(yaw) * Math.cos(pitch) * dist
-    );
+    const orbit = Math.cos(pitch);
+    camera.position.set(Math.sin(yaw) * orbit * dist, lookY + Math.sin(pitch) * dist, Math.cos(yaw) * orbit * dist);
     camera.lookAt(0, lookY, 0);
   }
 
@@ -239,16 +330,67 @@ export function mount(container, initial) {
     hairMat.color.set(color || "#1a120e");
   }
 
+  function clothUniform(name) {
+    return cloth?.material?.userData?.shader?.uniforms[name];
+  }
+
   function assignMap(slot, texture) {
     const previous = maps[slot];
     if (previous && previous !== texture) previous.dispose();
     maps[slot] = texture;
-    const flag = { top: "uHasTop", bottom: "uHasBottom", shoe: "uHasShoe", face: "uHasFace" }[slot];
-    const sampler = { top: "uTopMap", bottom: "uBottomMap", shoe: "uShoeMap", face: "uFaceMap" }[slot];
-    const has = uniform(flag);
-    const map = uniform(sampler);
+    if (slot === "face") {
+      const has = uniform("uHasFace");
+      const map = uniform("uFaceMap");
+      if (has) has.value = texture ? 1 : 0;
+      if (map) map.value = texture || blank;
+      return;
+    }
+    const flag = { top: "uHasTop", bottom: "uHasBottom", shoe: "uHasShoe" }[slot];
+    const sampler = { top: "uTopMap", bottom: "uBottomMap", shoe: "uShoeMap" }[slot];
+    const has = clothUniform(flag);
+    const map = clothUniform(sampler);
     if (has) has.value = texture ? 1 : 0;
     if (map) map.value = texture || blank;
+    if (cloth) cloth.visible = Boolean(maps.top || maps.bottom || maps.shoe);
+  }
+
+  function syncClothUniforms() {
+    const pairs = [
+      ["top", "uHasTop", "uTopMap"],
+      ["bottom", "uHasBottom", "uBottomMap"],
+      ["shoe", "uHasShoe", "uShoeMap"],
+    ];
+    for (const [slot, flag, sampler] of pairs) {
+      const has = clothUniform(flag);
+      const map = clothUniform(sampler);
+      if (!has || !map) return;
+      has.value = maps[slot] ? 1 : 0;
+      map.value = maps[slot] || blank;
+    }
+    if (cloth) cloth.visible = Boolean(maps.top || maps.bottom || maps.shoe);
+  }
+
+  function applyPose(time) {
+    if (!skeleton) return;
+    const pose = POSES[poseName] || POSES.rest;
+    figure.position.y = poseName === "sit" ? -0.22 * Math.max(figure.scale.y, 0.2) : 0;
+    const breathe = Math.sin(time * 1.35) * 0.035;
+    for (const bone of skeleton.bones) {
+      const rest = bone.userData.rest;
+      if (!rest) continue;
+      bone.quaternion.copy(rest);
+      const extra = pose[bone.name] || [0, 0, 0];
+      let x = extra[0];
+      let y = extra[1];
+      let z = extra[2];
+      if (bone.name === "spine_02" || bone.name === "spine_03") x += breathe;
+      if (bone.name === "clavicle_l") z += breathe * 0.35;
+      if (bone.name === "clavicle_r") z -= breathe * 0.35;
+      if (!x && !y && !z) continue;
+      poseEuler.set(x, y, z);
+      poseQuat.setFromEuler(poseEuler);
+      bone.quaternion.multiply(poseQuat);
+    }
   }
 
   function wear(slot, url) {
@@ -281,6 +423,7 @@ export function mount(container, initial) {
 
   function apply(next) {
     pending = next;
+    poseName = next.pose || "rest";
     if (!ready) return;
     applyShape(next);
     applyHair(next.hair, next.hairColor);
@@ -289,6 +432,8 @@ export function mount(container, initial) {
 
   function animate() {
     if (stopped) return;
+    applyPose(clock.getElapsedTime());
+    syncClothUniforms();
     if (headBone) {
       headBone.getWorldPosition(hairAnchor.position);
       hairAnchor.position.y += 0.015 * figure.scale.y;
@@ -308,7 +453,7 @@ export function mount(container, initial) {
     pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (pointers.size === 1) {
       yaw -= (event.clientX - previous.x) * 0.01;
-      pitch = Math.max(-0.15, Math.min(0.8, pitch + (event.clientY - previous.y) * 0.006));
+      pitch = Math.max(-1.45, Math.min(1.45, pitch + (event.clientY - previous.y) * 0.008));
       return;
     }
     const points = [...pointers.values()];
@@ -360,8 +505,12 @@ export function mount(container, initial) {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       mesh.frustumCulled = false;
-      figure.add(mesh);
-      headBone = mesh.skeleton?.bones.find((bone) => bone.name === "head") || null;
+      figure.add(gltf.scene);
+      skeleton = mesh.skeleton;
+      for (const bone of skeleton.bones) bone.userData.rest = bone.quaternion.clone();
+      headBone = skeleton.bones.find((bone) => bone.name === "head") || null;
+      cloth = makeGarment(mesh, blank, bodyState);
+      mesh.parent.add(cloth);
       ready = true;
       apply(pending);
     },

@@ -184,6 +184,56 @@ async function shrinkFile(file) {
   }
 }
 
+async function cutGarment(file) {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, 640 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  if (bitmap.close) bitmap.close();
+  const image = context.getImageData(0, 0, canvas.width, canvas.height);
+  const pixels = image.data;
+  const width = canvas.width;
+  const height = canvas.height;
+  const corners = [0, width - 1, (height - 1) * width, (height - 1) * width + (width - 1)];
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  for (const cursor of corners) {
+    red += pixels[cursor * 4];
+    green += pixels[cursor * 4 + 1];
+    blue += pixels[cursor * 4 + 2];
+  }
+  red /= 4;
+  green /= 4;
+  blue /= 4;
+  const seen = new Uint8Array(width * height);
+  const queue = corners.slice();
+  for (const start of queue) seen[start] = 1;
+  let head = 0;
+  while (head < queue.length) {
+    const cursor = queue[head];
+    head += 1;
+    const x = cursor % width;
+    const index = cursor * 4;
+    const distance = Math.abs(pixels[index] - red) + Math.abs(pixels[index + 1] - green) + Math.abs(pixels[index + 2] - blue);
+    if (distance > 54) continue;
+    pixels[index + 3] = 0;
+    const nexts = [cursor - width, cursor + width];
+    if (x > 0) nexts.push(cursor - 1);
+    if (x < width - 1) nexts.push(cursor + 1);
+    for (const next of nexts) {
+      if (next < 0 || next >= seen.length || seen[next]) continue;
+      seen[next] = 1;
+      queue.push(next);
+    }
+  }
+  context.putImageData(image, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
 async function measureBody(file) {
   try {
     const small = await shrinkFile(file);
@@ -296,6 +346,11 @@ function dockHTML() {
       <label>Teri<input id="fit-skin" type="range" min="0" max="5" step="1" value="${fit.skin}"></label>
       <label class="face-btn">Yuz<input id="fit-face" hidden type="file" accept="image/*" capture="user"></label>
       <label class="face-btn">Tana<input id="fit-body-photo" hidden type="file" accept="image/*"></label>
+      <label class="face-btn">Ustki rasm<input id="fit-garment-top" hidden type="file" accept="image/*"></label>
+      <label class="face-btn">Shim rasm<input id="fit-garment-bottom" hidden type="file" accept="image/*"></label>
+    </div>
+    <div class="hair-row">
+      ${[["rest", "Tinch"], ["wave", "Salom"], ["walk", "Yurish"], ["sit", "O'tirish"]].map(([key, label]) => `<button type="button" class="chip${fit.pose === key ? " on" : ""}" data-action="set-pose" data-pose="${key}">${label}</button>`).join("")}
     </div>
     <div class="hair-row">
       ${[["short", "Kalta"], ["medium", "O'rta"], ["long", "Uzun"], ["bun", "Yig'ilgan"]].map(([key, label]) => `<button type="button" class="chip${fit.hair === key ? " on" : ""}" data-action="set-hair" data-hair="${key}">${label}</button>`).join("")}
@@ -527,10 +582,16 @@ function ensureFitState() {
       top: "",
       bottom: "",
       shoes: "",
+      pose: "rest",
+      drapeTop: "",
+      drapeBottom: "",
     };
   }
   state.fit.hair = state.fit.hair || "short";
   state.fit.hairColor = state.fit.hairColor || "#1a120e";
+  state.fit.pose = state.fit.pose || "rest";
+  state.fit.drapeTop = state.fit.drapeTop || "";
+  state.fit.drapeBottom = state.fit.drapeBottom || "";
   return state.fit;
 }
 
@@ -573,8 +634,9 @@ function fitPayload() {
     faceUrl: fit.face || "",
     hair: fit.hair,
     hairColor: fit.hairColor,
-    topUrl: top?.image_url || "",
-    bottomUrl: bottom?.image_url || "",
+    pose: fit.pose || "rest",
+    topUrl: fit.drapeTop || top?.image_url || "",
+    bottomUrl: fit.drapeBottom || bottom?.image_url || "",
     shoeUrl: shoe?.image_url || "",
     dress: top?.category === "dress",
   };
@@ -885,7 +947,7 @@ document.body.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button || state.busy) return;
   const action = button.dataset.action;
-  const instant = new Set(["more", "close-modal", "open-item", "set-cat", "toggle-forgotten", "remove-pending", "pick-day", "toggle-pick", "wear", "show-rail", "set-hair", "set-hair-color"]);
+  const instant = new Set(["more", "close-modal", "open-item", "set-cat", "toggle-forgotten", "remove-pending", "pick-day", "toggle-pick", "wear", "show-rail", "set-hair", "set-hair-color", "set-pose"]);
   if (!instant.has(action)) lockUi(button);
   try {
     if (action === "nav") {
@@ -920,6 +982,11 @@ document.body.addEventListener("click", async (event) => {
       document.querySelectorAll("[data-action='set-hair']").forEach((node) => node.classList.toggle("on", node.dataset.hair === fit.hair));
       fitApi?.update(fitPayload());
       paintAdvice();
+    } else if (action === "set-pose") {
+      const fit = ensureFitState();
+      fit.pose = button.dataset.pose || "rest";
+      document.querySelectorAll("[data-action='set-pose']").forEach((node) => node.classList.toggle("on", node.dataset.pose === fit.pose));
+      fitApi?.update(fitPayload());
     } else if (action === "set-hair-color") {
       const fit = ensureFitState();
       fit.hairColor = button.dataset.color;
@@ -1132,6 +1199,21 @@ document.body.addEventListener("change", async (event) => {
         syncFit();
         toast("Tana rasmidan bo'y va vazn olindi");
       } else toast("Tana rasmidan siluet topilmadi. Slayderdan sozlang.");
+    }
+  } else if (target.id === "fit-garment-top" || target.id === "fit-garment-bottom") {
+    const file = target.files?.[0];
+    target.value = "";
+    if (file) {
+      try {
+        const url = await cutGarment(file);
+        const fit = ensureFitState();
+        if (target.id === "fit-garment-top") fit.drapeTop = url;
+        else fit.drapeBottom = url;
+        fitApi?.update(fitPayload());
+        toast(target.id === "fit-garment-top" ? "Ustki kiyim tanaga yopishtirildi" : "Shim tanaga yopishtirildi");
+      } catch (_error) {
+        toast("Kiyim rasmi o'qilmadi");
+      }
     }
   } else if (target.id === "fit-face") {
     const file = target.files?.[0];
